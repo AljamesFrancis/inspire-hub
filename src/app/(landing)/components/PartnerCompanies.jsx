@@ -23,9 +23,9 @@ const images = [
 
 const PartnerCompanies = () => {
   return (
-    <div className="text-center bg-white py-10 px-4 mb-16">
+    <div className="text-center bg-white py-10 px-4">
       {/* Heading */}
-      <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-800 relative inline-block after:content-[''] after:block after:w-24 after:h-1 after:bg-blue-600 after:mx-auto after:mt-2 mb-10">
+      <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-800 relative inline-block after:content-[''] after:block after:w-101 after:h-1 after:bg-yellow-300 after:mx-auto after:mt-2 mb-10">
         Our Trusted Partners
       </h1>
 
