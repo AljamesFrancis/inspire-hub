@@ -22,7 +22,9 @@ export default function Topnav() {
   return (
     <nav
       className={`w-full fixed top-0 left-0 z-50 px-6 py-4 flex items-center justify-between transition-colors duration-300 ${
-        scrolled ? "bg-gray-900 shadow-md" : "bg-transparent"
+
+        scrolled ? 'bg-[#2b2b2b] shadow-md' : 'bg-transparent'
+
       }`}
     >
       {/* Logo */}
@@ -33,7 +35,7 @@ export default function Topnav() {
           width={40}
           height={40}
         />
-        <span className="text-white font-bold text-lg">MyWebsite</span>
+        <span className="text-white font-bold text-lg">Inspire Hub</span>
       </div>
 
       {/* Navigation Links */}
@@ -56,8 +58,10 @@ export default function Topnav() {
           href="/login"
           className={`font-bold transition ${
             scrolled
-              ? "bg-orange-500 text-gray-800 px-4 py-2 rounded hover:bg-orange-600"
-              : "text-white hover:text-blue-300"
+
+              ? 'bg-yellow-500 text-gray-900 px-4 py-2 rounded hover:bg-orange-600'
+              : 'text-white hover:text-blue-300'
+
           }`}
         >
           Login
