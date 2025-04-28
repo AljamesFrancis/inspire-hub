@@ -50,19 +50,24 @@ const Sidenav = () => {
         if (isDesktop) setIsHovered(false);
       }}
     >
-      {/* Mobile Hamburger */}
-      <button
-        onClick={handleToggle}
-        className="md:hidden text-white text-2xl mb-8"
-      >
-        <FaBars />
-      </button>
-
-      {/* Desktop Hamburger */}
-      <div className="hidden md:block">
-        <FaBars className="text-white text-2xl mb-8" />
-      </div>
-
+      {/* Hamburger Icon (only when not expanded) */}
+      {!isExpanded && (
+        <>
+          {/* Mobile Hamburger */}
+          <button
+            onClick={handleToggle}
+            className="md:hidden text-white text-2xl mb-8"
+          >
+            <FaBars />
+          </button>
+  
+          {/* Desktop Hamburger */}
+          <div className="hidden md:block">
+            <FaBars className="text-white text-2xl mb-8" />
+          </div>
+        </>
+      )}
+  
       <ul className="flex flex-col gap-6 mt-10">
         {menuItems.map((item, index) => (
           <li
@@ -79,6 +84,7 @@ const Sidenav = () => {
       </ul>
     </div>
   );
+  
 };
 
 export default Sidenav;
