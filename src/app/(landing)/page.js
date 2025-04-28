@@ -15,12 +15,10 @@ export default function Home() {
     <div>
       <Sidenav />
       <Hero />
-
-      <Register/>
-
       <PartnerCompanies />
       <About />
       <Complimentary />
+      <Register/>
     </div>
   );
 }
