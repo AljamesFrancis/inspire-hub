@@ -1,9 +1,13 @@
 import Image from "next/image";
 import Hero from "./components/Hero";
+
+import Register from "./components/Register";
+
 import PartnerCompanies from "./components/PartnerCompanies";
 import About from "./components/About";
 import Complimentary from "./components/Complimentary";
 import Sidenav from "../(dashboard)/components/Sidenav";
+
 
 
 export default function Home() {
@@ -11,6 +15,9 @@ export default function Home() {
     <div>
       <Sidenav />
       <Hero />
+
+      <Register/>
+
       <PartnerCompanies />
       <About />
       <Complimentary />
