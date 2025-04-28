@@ -13,12 +13,10 @@ export default function Home() {
   return (
     <div>
       <Hero />
-
-      <Register/>
-
       <PartnerCompanies />
       <About />
       <Complimentary />
+      <Register/>
     </div>
   );
 }
