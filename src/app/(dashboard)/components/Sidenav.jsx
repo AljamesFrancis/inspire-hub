@@ -1,20 +1,21 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { FaBars } from 'react-icons/fa';
+import Link from 'next/link'; 
 
 const Sidenav = () => {
   const [isHovered, setIsHovered] = useState(false);
-  const [isOpen, setIsOpen] = useState(false); // for mobile toggle
-  const [isDesktop, setIsDesktop] = useState(true); // detect screen size
+  const [isOpen, setIsOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(true);
 
   const menuItems = [
-    'Home',
-    'Book',
-    'Reservation',
-    'Reservation History',
-    'Billing',
-    'Profile',
-    'Logout',
+    { name: 'Home', path: '/main' },
+    { name: 'Book', path: '/booking' },
+    { name: 'Reservation', path: '/reservation' },
+    { name: 'Reservation History', path: '/reservationHistory' },
+    { name: 'Billing', path: '/billing' },
+    { name: 'Profile', path: '/profile' },
+    { name: 'Logout', path: '/' },
   ];
 
   const handleToggle = () => {
@@ -38,9 +39,9 @@ const Sidenav = () => {
       style={{
         width: isExpanded ? '200px' : '60px',
         backgroundColor: isExpanded
-          ? 'rgba(31, 41, 55, 1)' // dark when open
-          : 'rgba(31, 41, 55, 0)', // transparent when closed
-        transition: 'width 0.3s ease, background-color 0.3s ease', // Only transition width and bg
+          ? 'rgba(31, 41, 55, 1)'
+          : 'rgba(31, 41, 55, 0)',
+        transition: 'width 0.3s ease, background-color 0.3s ease',
       }}
       onMouseEnter={() => {
         if (isDesktop) setIsHovered(true);
@@ -68,9 +69,11 @@ const Sidenav = () => {
             key={index}
             className={`text-white text-sm font-medium ${
               isExpanded ? 'opacity-100' : 'opacity-0'
-            } transition-opacity duration-200`} // transition only opacity separately
+            } transition-opacity duration-200`}
           >
-            {item}
+            <Link href={item.path}>
+              {item.name}
+            </Link>
           </li>
         ))}
       </ul>
