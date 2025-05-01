@@ -27,7 +27,6 @@ const Complimentary = () => {
   return (
     <div className="bg-white py-12 px-6 md:px-16">
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row-reverse items-center md:items-start gap-10">
-        
         {/* Rotating Image Section */}
         <div className="w-full md:w-1/2 relative h-[300px] md:h-[400px] overflow-hidden">
           {images.map((src, index) => (
@@ -36,7 +35,9 @@ const Complimentary = () => {
               src={src}
               alt={`Complimentary Image ${index}`}
               className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${
-                index === currentImageIndex ? "opacity-100 z-10" : "opacity-0 z-0"
+                index === currentImageIndex
+                  ? "opacity-100 z-10"
+                  : "opacity-0 z-0"
               }`}
             />
           ))}
