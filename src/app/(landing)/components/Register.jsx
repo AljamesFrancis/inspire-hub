@@ -2,7 +2,7 @@ export default function ServcorpBanner() {
   const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=Tokyo-Uptown+BGC,+A.+Bonifacio+36+1637+Makati+National+Capital+Region&zoom=16&size=1200x600&maptype=roadmap&markers=color:red|Tokyo-Uptown+BGC,+A.+Bonifacio+36+1637+Makati+National+Capital+Region&key=AIzaSyCCkofkGxfEG_m9e2PmJPFtEu2veaZXX6g`;
 
   return (
-    <div className="w-full h-[400px] flex bg-gray-200">
+    <div className="w-full h-[400px] flex bg-white">
       {/* Text Section */}
       <div className="w-2/3 h-full flex flex-col justify-center px-10 text-black">
         <h2 className="text-4xl font-light text-[#c29554] text-center">Not a I-Hub client?</h2>
