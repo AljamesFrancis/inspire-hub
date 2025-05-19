@@ -2,11 +2,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import Signup from '../components/Signup'; // Make sure you import Signup modal component
+import Signup from '../components/Signup'; // Adjust paths as needed
+import Login from '../components/Login';
 
 export default function Topnav() {
   const [scrolled, setScrolled] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false); // State to control modal visibility
+  const [isModalOpen, setIsModalOpen] = useState(false); // Signup modal
+  const [isLoginOpen, setIsLoginOpen] = useState(false); // Login modal
 
   useEffect(() => {
     const handleScroll = () => {
@@ -15,18 +17,25 @@ export default function Topnav() {
 
     window.addEventListener('scroll', handleScroll);
 
-    // Cleanup
     return () => {
       window.removeEventListener('scroll', handleScroll);
     };
   }, []);
 
-  const openModal = () => {
+  const openSignupModal = () => {
     setIsModalOpen(true);
   };
 
-  const closeModal = () => {
+  const closeSignupModal = () => {
     setIsModalOpen(false);
+  };
+
+  const openLoginModal = () => {
+    setIsLoginOpen(true);
+  };
+
+  const closeLoginModal = () => {
+    setIsLoginOpen(false);
   };
 
   return (
@@ -52,17 +61,17 @@ export default function Topnav() {
           About
         </Link>
 
-        {/* Open the SignUp Modal on Click */}
+        {/* Sign Up Button */}
         <button
-          onClick={openModal}
+          onClick={openSignupModal}
           className="text-white font-bold hover:text-blue-300 transition"
         >
           Sign up
         </button>
 
-        {/* Login Button with conditional styles */}
-        <Link
-          href="/login"
+        {/* Login Button */}
+        <button
+          onClick={openLoginModal}
           className={`font-bold transition ${
             scrolled
               ? 'bg-yellow-500 text-gray-900 px-4 py-2 rounded hover:bg-orange-600'
@@ -70,11 +79,14 @@ export default function Topnav() {
           }`}
         >
           Login
-        </Link>
+        </button>
       </div>
 
-      {/* Render the Modal when isModalOpen is true */}
-      {isModalOpen && <Signup closeModal={closeModal} />}
+      {/* Render Signup Modal */}
+      {isModalOpen && <Signup closeModal={closeSignupModal} />}
+
+      {/* Render Login Modal */}
+      {isLoginOpen && <Login closeModal={closeLoginModal} />}
     </nav>
   );
 }
