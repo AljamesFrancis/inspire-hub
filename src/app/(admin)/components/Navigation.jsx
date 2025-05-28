@@ -52,6 +52,9 @@ export default function Navigation() {
             <Link href="/settings" className="text-white font-bold hover:text-blue-300 transition">
               ⚙️ Settings
             </Link>
+            <Link href="/seatmap" className="text-white font-bold hover:text-blue-300 transition">
+              ⚙️ Map
+            </Link>
           </div>
 
           {/* Account Links */}

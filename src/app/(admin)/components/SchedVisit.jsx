@@ -1,6 +1,6 @@
 "use client";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, where, query, doc, updateDoc } from "firebase/firestore";
 import React, { useState, useEffect } from "react";
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -32,9 +32,11 @@ const groupedSeats4 = groupSeatsByRow(seatMap4);
 const groupedSeats5 = groupSeatsByRow(seatMap5);
 
 export default function ClientsPage() {
-  const [clients, setClients] = useState([]); // All client docs from Firestore
+  const [clients, setClients] = useState([]); // All client docs from seatMap
+  const [visitClients, setVisitClients] = useState([]); // All visitMap docs
   const [selectedClientId, setSelectedClientId] = useState(null);
 
+  // Fetch seatMap (existing) collection
   useEffect(() => {
     async function fetchData() {
       const querySnapshot = await getDocs(collection(db, "seatMap"));
@@ -47,23 +49,60 @@ export default function ClientsPage() {
     fetchData();
   }, []);
 
-  // Always get the latest client object from clients array
-  const selectedClient = clients.find((c) => c.id === selectedClientId) || null;
+  // Fetch visitMap collection (only status === false)
+  const fetchVisitData = async () => {
+    const q = query(
+      collection(db, "visitMap"),
+      where("status", "==", false)
+    );
+    const querySnapshot = await getDocs(q);
+    const docs = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setVisitClients(docs);
+  };
+  useEffect(() => {
+    fetchVisitData();
+  }, []);
 
-  // All seats booked by any client (so you can mark them as "booked" and disable them)
-  const allBookedSeats = clients.flatMap((c) => c.selectedSeats || []);
-
-  // Seats selected by the selected client (for "selected" blue highlight)
-  const getSelectedSeats = () =>
-    selectedClient && selectedClient.selectedSeats
-      ? selectedClient.selectedSeats
-      : [];
-
-  const isSelectedSeat = (seat, mapType) => {
-    const seatKey = `${mapType}-${seat.number}`;
-    return getSelectedSeats().includes(seatKey);
+  // Accept handler (set status to true and refetch)
+  const acceptVisit = async (visitId) => {
+    if (!visitId) return;
+    try {
+      const visitRef = doc(db, "visitMap", visitId);
+      await updateDoc(visitRef, { status: true });
+      await fetchVisitData(); // refetch after update
+      setSelectedClientId(null); // Optionally deselect after accept
+      alert("Status updated to accepted!");
+    } catch (error) {
+      console.error("Failed to accept visit:", error);
+      alert("Failed to accept visit.");
+    }
   };
 
+  // Only the selected client from visitMap
+  const selectedVisitClient = visitClients.find(c => c.id === selectedClientId);
+  // All reservedSeats for the selected visit client
+  const allReservedSeats = selectedVisitClient?.reservedSeats || [];
+  // All selectedSeats from seatMap (for red highlight)
+  const allSelectedSeats = clients.flatMap((c) => c.selectedSeats || []);
+  // Find the selected visit client from visitMap collection (details)
+  const selectedClient = selectedVisitClient || null;
+
+  // Helper to check if a seat is reserved (visitMap)
+  const isReservedSeat = (seat, mapType) => {
+    const seatKey = `${mapType}-${seat.number}`;
+    return allReservedSeats.includes(seatKey);
+  };
+
+  // Helper to check if a seat is selected (seatMap)
+  const isSelectedSeat = (seat, mapType) => {
+    const seatKey = `${mapType}-${seat.number}`;
+    return allSelectedSeats.includes(seatKey);
+  };
+
+  // Rendering seat map with updated logic (selectedSeats = red, reservedSeats = blue)
   const renderSeatMap = (groupPairs, mapType, title) => (
     <div className="flex-1 min-w-[180px]">
       <h3 className="text-xs sm:text-sm font-semibold mb-3 text-center">
@@ -78,8 +117,34 @@ export default function ClientsPage() {
                 <div className="flex">
                   {seats.map((seat) => {
                     const seatKey = `${mapType}-${seat.number}`;
-                    const isBooked = allBookedSeats.includes(seatKey);
-                    const isSelected = isSelectedSeat(seat, mapType);
+                    const reserved = isReservedSeat(seat, mapType);
+                    const selected = isSelectedSeat(seat, mapType);
+
+                    // Priority: reservedSeats (blue) > selectedSeats (red) > window/normal
+                    let seatColorClass = "";
+                    let barColorClass = "";
+                    let hoverTitle = "";
+                    if (reserved) {
+                      seatColorClass = "bg-blue-500 text-white";
+                      barColorClass = "bg-blue-600";
+                      hoverTitle = "This seat is scheduled for a visit";
+                    } else if (selected) {
+                      seatColorClass = "bg-red-400 text-white";
+                      barColorClass = "bg-red-600";
+                      hoverTitle = "This seat is currently occupied";
+                    } else if (seat.type === "window") {
+                      seatColorClass = "bg-gray-100 hover:bg-gray-200 text-gray-800";
+                      barColorClass = "bg-gray-400";
+                      hoverTitle = "Window seat (vacant)";
+                    } else {
+                      seatColorClass = "bg-gray-50 hover:bg-gray-100 text-gray-800";
+                      barColorClass = "bg-gray-300";
+                      hoverTitle = "Vacant seat";
+                    }
+
+                    // Disable if reserved or selected
+                    const disabled = reserved || selected;
+
                     return (
                       <div
                         key={seat.id}
@@ -90,17 +155,9 @@ export default function ClientsPage() {
                         }`}
                       >
                         <button
-                          disabled={isBooked}
-                          className={`h-5 w-8 sm:h-6 sm:w-10 border-0 flex flex-col items-center justify-center transition ${
-                            isBooked
-                              ? "bg-red-300 cursor-not-allowed text-white"
-                              : isSelected
-                              ? "bg-blue-500 text-white"
-                              : seat.type === "window"
-                              ? "bg-gray-100 hover:bg-gray-200 text-gray-800"
-                              : "bg-gray-50 hover:bg-gray-100 text-gray-800"
-                          }`}
-                          title={`Seat ${seat.number} (${seat.type}) - ${title}`}
+                          disabled={disabled}
+                          className={`h-5 w-8 sm:h-6 sm:w-10 border-0 flex flex-col items-center justify-center transition ${seatColorClass} ${disabled ? "cursor-not-allowed" : ""}`}
+                          title={hoverTitle}
                         >
                           <Monitor size={8} className="mb-0.5" />
                           <span className="text-[8px] sm:text-[10px]">
@@ -108,15 +165,7 @@ export default function ClientsPage() {
                           </span>
                         </button>
                         <div
-                          className={`absolute top-0 left-0 w-full h-[2px] ${
-                            isBooked
-                              ? "bg-red-400"
-                              : isSelected
-                              ? "bg-blue-600"
-                              : seat.type === "window"
-                              ? "bg-gray-400"
-                              : "bg-gray-300"
-                          }`}
+                          className={`absolute top-0 left-0 w-full h-[2px] ${barColorClass}`}
                         ></div>
                       </div>
                     );
@@ -163,7 +212,7 @@ export default function ClientsPage() {
           <h2 className="text-l font-semibold">Clients Request For Visit</h2>
         </div>
         <div className="divide-y divide-gray-200">
-          {clients.map((client) => (
+          {visitClients.map((client) => (
             <div
               key={client.id}
               className={`p-4 cursor-pointer hover:bg-blue-50 ${
@@ -192,7 +241,10 @@ export default function ClientsPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button className="px-3 py-1 sm:px-4 sm:py-2 bg-green-400 text-white rounded hover:bg-green-500 text-sm sm:text-base">
+                  <button
+                    className="px-3 py-1 sm:px-4 sm:py-2 bg-green-400 text-white rounded hover:bg-green-500 text-sm sm:text-base"
+                    onClick={() => acceptVisit(selectedClient.id)}
+                  >
                     Accept
                   </button>
                   <button className="px-3 py-1 sm:px-4 sm:py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm sm:text-base">
@@ -222,6 +274,26 @@ export default function ClientsPage() {
                   <p className="text-gray-700 text-sm sm:text-base">
                     {selectedClient.details}
                   </p>
+                  <div className="mt-4">
+                    <h3 className="font-semibold text-sm mb-1">
+                      Visit Reservation Details
+                    </h3>
+                    <p className="text-xs text-gray-500 mb-2">
+                      <strong>Reserved Seats:</strong>
+                      {" "}
+                      {selectedClient.reservedSeats && selectedClient.reservedSeats.length
+                        ? selectedClient.reservedSeats.join(", ")
+                        : "None"}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      <strong>Visit Date:</strong>{" "}
+                      {selectedClient.date
+                        ? (selectedClient.date.seconds
+                            ? new Date(selectedClient.date.seconds * 1000).toLocaleString()
+                            : selectedClient.date.toLocaleString())
+                        : "Not specified"}
+                    </p>
+                  </div>
                 </div>
               </div>
               <div className="mt-6 sm:mt-8">
@@ -231,20 +303,25 @@ export default function ClientsPage() {
                 <div className="bg-gray-50 p-3 sm:p-4 rounded-lg overflow-x-auto">
                   <div className="flex flex-wrap gap-2 mb-3 sm:mb-4">
                     <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-50 border border-gray-300"></div>
-                      <span className="text-xs sm:text-sm">Regular Seat</span>
+                      <div
+                        className="w-3 h-3 sm:w-4 sm:h-4 bg-blue-500 border border-blue-700"
+                        title="This seat is scheduled for a visit"
+                      ></div>
+                      <span className="text-xs sm:text-sm">Schedule for visit</span>
                     </div>
                     <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-100 border border-gray-400"></div>
-                      <span className="text-xs sm:text-sm">Window Seat</span>
+                      <div
+                        className="w-3 h-3 sm:w-4 sm:h-4 bg-red-400 border border-red-700"
+                        title="This seat is currently occupied"
+                      ></div>
+                      <span className="text-xs sm:text-sm">Occupied Seat</span>
                     </div>
                     <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 bg-red-300"></div>
-                      <span className="text-xs sm:text-sm">Booked Seat</span>
-                    </div>
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 bg-blue-500"></div>
-                      <span className="text-xs sm:text-sm">Selected Seat</span>
+                      <div
+                        className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-50 border border-gray-300"
+                        title="Vacant seat"
+                      ></div>
+                      <span className="text-xs sm:text-sm">Vacant Seats</span>
                     </div>
                   </div>
                   <div className="overflow-x-auto pb-2">
