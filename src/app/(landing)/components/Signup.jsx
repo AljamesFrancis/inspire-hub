@@ -166,6 +166,7 @@ export default function Signup({ closeModal }) {
                   name="companyName"
                   value={formData.companyName}
                   onChange={handleChange}
+
                   className="mt-1 block w-full p-2 border rounded"
                 />
               </div>

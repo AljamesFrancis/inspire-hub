@@ -1,3 +1,4 @@
+
 "use client";
 import Image from "next/image";
 import React, { useState, useEffect } from "react";
@@ -109,4 +110,6 @@ const Page = () => {
   );  
 };
 
-export default Page;
+
+export default page
+
