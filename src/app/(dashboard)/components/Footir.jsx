@@ -60,7 +60,7 @@ const Footer = () => {
             <FaDribbble />
             <FaInstagram />
             <FaLinkedin />
-            <FaFacebookF />
+            <FaFacebookF/>
           </div>
         </div>
 
