@@ -1,7 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./../globals.css";
-
-import Topnav from './components/Topnav';
+import Navigation from "./components/Navigation";
 import Footer from './components/Footer';
 
 const geistSans = Geist({
@@ -21,13 +20,16 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Topnav/>
-        {children}
-        <Footer/>
+    <html lang="en" className="h-full">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}>
+        <Navigation />
+        
+        {/* Main content that grows to push footer down */}
+        <main className="flex-grow pt-16 pb-16"> {/* Added pb-16 to prevent footer overlap */}
+          {children}
+        </main>
+        
+        
       </body>
     </html>
   );
