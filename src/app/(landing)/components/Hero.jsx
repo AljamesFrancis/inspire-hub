@@ -33,7 +33,7 @@ const Hero = () => {
             src={image}
             alt={`Background ${index}`}
             className={`absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-1000 ${
-              index === currentImageIndex ? "opacity-100 z-[-1]" : "opacity-0"
+              index === currentImageIndex ? "opacity-50 z-[-1]" : "opacity-0"
             }`}
           />
         ))}
