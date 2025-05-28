@@ -1,0 +1,148 @@
+[
+  
+  { "id": 1, "number": "A1", "status": "available", "type": "window" },
+  { "id": 2, "number": "A2", "status": "available", "type": "aisle" },
+  { "id": 3, "number": "A3", "status": "available", "type": "aisle" },
+  { "id": 4, "number": "A4", "status": "available", "type": "window" },
+  { "id": 5, "number": "A5", "status": "available", "type": "aisle" },
+  { "id": 6, "number": "A6", "status": "available", "type": "window" },
+  { "id": 31, "number": "A7", "status": "available", "type": "aisle" },
+  { "id": 32, "number": "A8", "status": "available", "type": "window" },
+
+  
+  { "id": 7, "number": "B1", "status": "available", "type": "window" },
+  { "id": 8, "number": "B2", "status": "available", "type": "aisle" },
+  { "id": 9, "number": "B3", "status": "available", "type": "aisle" },
+  { "id": 10, "number": "B4", "status": "available", "type": "window" },
+  { "id": 11, "number": "B5", "status": "available", "type": "aisle" },
+  { "id": 12, "number": "B6", "status": "available", "type": "window" },
+  { "id": 33, "number": "B7", "status": "available", "type": "aisle" },
+  { "id": 34, "number": "B8", "status": "available", "type": "window" },
+
+ 
+  { "id": 13, "number": "C1", "status": "available", "type": "window" },
+  { "id": 14, "number": "C2", "status": "available", "type": "aisle" },
+  { "id": 15, "number": "C3", "status": "available", "type": "aisle" },
+  { "id": 16, "number": "C4", "status": "available", "type": "window" },
+  { "id": 17, "number": "C5", "status": "available", "type": "aisle" },
+  { "id": 18, "number": "C6", "status": "available", "type": "window" },
+  { "id": 35, "number": "C7", "status": "available", "type": "aisle" },
+  { "id": 36, "number": "C8", "status": "available", "type": "window" },
+
+  
+  { "id": 19, "number": "D1", "status": "available", "type": "window" },
+  { "id": 20, "number": "D2", "status": "available", "type": "aisle" },
+  { "id": 21, "number": "D3", "status": "available", "type": "aisle" },
+  { "id": 22, "number": "D4", "status": "available", "type": "window" },
+  { "id": 23, "number": "D5", "status": "available", "type": "aisle" },
+  { "id": 24, "number": "D6", "status": "available", "type": "window" },
+  { "id": 37, "number": "D7", "status": "available", "type": "aisle" },
+  { "id": 38, "number": "D8", "status": "available", "type": "window" },
+
+  
+  { "id": 49, "number": "E1", "status": "available", "type": "window" },
+  { "id": 50, "number": "E2", "status": "available", "type": "aisle" },
+  { "id": 51, "number": "E3", "status": "available", "type": "aisle" },
+  { "id": 52, "number": "E4", "status": "available", "type": "window" },
+  { "id": 53, "number": "E5", "status": "available", "type": "aisle" },
+  { "id": 54, "number": "E6", "status": "available", "type": "window" },
+  { "id": 55, "number": "E7", "status": "available", "type": "aisle" },
+  { "id": 56, "number": "E8", "status": "available", "type": "window" },
+
+ 
+  { "id": 57, "number": "F1", "status": "available", "type": "window" },
+  { "id": 58, "number": "F2", "status": "available", "type": "aisle" },
+  { "id": 59, "number": "F3", "status": "available", "type": "aisle" },
+  { "id": 60, "number": "F4", "status": "available", "type": "window" },
+  { "id": 61, "number": "F5", "status": "available", "type": "aisle" },
+  { "id": 62, "number": "F6", "status": "available", "type": "window" },
+  { "id": 63, "number": "F7", "status": "available", "type": "aisle" },
+  { "id": 64, "number": "F8", "status": "available", "type": "window" },
+
+  
+  { "id": 65, "number": "G1", "status": "available", "type": "window" },
+  { "id": 66, "number": "G2", "status": "available", "type": "aisle" },
+  { "id": 67, "number": "G3", "status": "available", "type": "aisle" },
+  { "id": 68, "number": "G4", "status": "available", "type": "window" },
+  { "id": 69, "number": "G5", "status": "available", "type": "aisle" },
+  { "id": 70, "number": "G6", "status": "available", "type": "window" },
+  { "id": 71, "number": "G7", "status": "available", "type": "aisle" },
+  { "id": 72, "number": "G8", "status": "available", "type": "window" },
+
+  
+  { "id": 73, "number": "H1", "status": "available", "type": "window" },
+  { "id": 74, "number": "H2", "status": "available", "type": "aisle" },
+  { "id": 75, "number": "H3", "status": "available", "type": "aisle" },
+  { "id": 76, "number": "H4", "status": "available", "type": "window" },
+  { "id": 77, "number": "H5", "status": "available", "type": "aisle" },
+  { "id": 78, "number": "H6", "status": "available", "type": "window" },
+  { "id": 79, "number": "H7", "status": "available", "type": "aisle" },
+  { "id": 80, "number": "H8", "status": "available", "type": "window" },
+
+  
+  { "id": 81, "number": "I1", "status": "available", "type": "window" },
+  { "id": 82, "number": "I2", "status": "available", "type": "aisle" },
+  { "id": 83, "number": "I3", "status": "available", "type": "aisle" },
+  { "id": 84, "number": "I4", "status": "available", "type": "window" },
+  { "id": 85, "number": "I5", "status": "booked", "type": "aisle" },
+  { "id": 86, "number": "I6", "status": "available", "type": "window" },
+  { "id": 87, "number": "I7", "status": "booked", "type": "aisle" },
+  { "id": 88, "number": "I8", "status": "available", "type": "window" },
+
+  
+  { "id": 89, "number": "J1", "status": "available", "type": "window" },
+  { "id": 90, "number": "J2", "status": "available", "type": "aisle" },
+  { "id": 91, "number": "J3", "status": "available", "type": "aisle" },
+  { "id": 92, "number": "J4", "status": "available", "type": "window" },
+  { "id": 93, "number": "J5", "status": "available", "type": "aisle" },
+  { "id": 94, "number": "J6", "status": "available", "type": "window" },
+  { "id": 95, "number": "J7", "status": "available", "type": "aisle" },
+  { "id": 96, "number": "J8", "status": "available", "type": "window" },
+
+
+
+
+  { "id": 97, "number": "K1", "status": "available", "type": "window" },
+  { "id": 98, "number": "K2", "status": "available", "type": "aisle" },
+  { "id": 99, "number": "K3", "status": "available", "type": "aisle" },
+  { "id": 100, "number": "K4", "status": "available", "type": "window" },
+  { "id": 101, "number": "K5", "status": "booked", "type": "aisle" },
+  { "id": 102, "number": "K6", "status": "available", "type": "window" },
+  { "id": 103, "number": "K7", "status": "booked", "type": "aisle" },
+  { "id": 104, "number": "K8", "status": "available", "type": "window" },
+
+  
+  { "id": 105, "number": "L1", "status": "available", "type": "window" },
+  { "id": 106, "number": "L2", "status": "available", "type": "aisle" },
+  { "id": 107, "number": "L3", "status": "available", "type": "aisle" },
+  { "id": 108, "number": "L4", "status": "available", "type": "window" },
+  { "id": 109, "number": "L5", "status": "available", "type": "aisle" },
+  { "id": 110, "number": "L6", "status": "available", "type": "window" },
+  { "id": 111, "number": "L7", "status": "available", "type": "aisle" },
+  { "id": 112, "number": "L8", "status": "available", "type": "window" },
+
+
+
+{ "id": 113, "number": "M1", "status": "available", "type": "window" },
+{ "id": 114, "number": "M2", "status": "available", "type": "aisle" },
+{ "id": 115, "number": "M3", "status": "available", "type": "aisle" },
+{ "id": 116, "number": "M4", "status": "available", "type": "window" },
+{ "id": 117, "number": "M5", "status": "available", "type": "aisle" },
+{ "id": 118, "number": "M6", "status": "available", "type": "window" },
+{ "id": 119, "number": "M7", "status": "available", "type": "aisle" },
+{ "id": 120, "number": "M8", "status": "available", "type": "window" },
+
+{ "id": 121, "number": "N1", "status": "available", "type": "window" },
+{ "id": 122, "number": "N2", "status": "available", "type": "aisle" },
+{ "id": 123, "number": "N3", "status": "available", "type": "aisle" },
+{ "id": 124, "number": "N4", "status": "available", "type": "window" },
+{ "id": 125, "number": "N5", "status": "available", "type": "aisle" },
+{ "id": 126, "number": "N6", "status": "available", "type": "window" },
+{ "id": 127, "number": "N7", "status": "available", "type": "aisle" },
+{ "id": 128, "number": "N8", "status": "available", "type": "window" }
+
+
+
+
+  
+]

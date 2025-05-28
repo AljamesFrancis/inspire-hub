@@ -23,7 +23,11 @@ export default function Login({ closeModal }) {
       // Wait for 5 seconds before redirecting
       setTimeout(() => {
         // Redirect to /main after 5 seconds
+
+//         router.push('/schedvisit');
+
         router.push('/main');
+
 
         // Close modal after the redirect is triggered
         if (closeModal) closeModal();
