@@ -1,6 +1,7 @@
 import React from 'react';
 import { Globe } from 'lucide-react';
 
+
 const Footer = () => {
   return (
     <footer className="bg-[#2b2b2b] text-[#d5ae85] py-10 px-6 md:px-20">
