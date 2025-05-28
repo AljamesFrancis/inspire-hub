@@ -1,26 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { format } from 'date-fns';
-
-const sampleReservations = [
-  {
-    id: "res1",
-    userId: "user123",
-    date: new Date("2025-06-01T10:30:00"),
-    status: "Confirmed",
-  },
-  {
-    id: "res2",
-    userId: "user456",
-    date: new Date("2025-06-02T15:00:00"),
-    status: "Pending",
-  },
-  {
-    id: "res3",
-    userId: "user123",
-    date: new Date("2025-06-03T09:00:00"),
-    status: "Cancelled",
-  },
-];
+import { db } from "../../../../script/firebaseConfig";
+import { collection, getDocs, where, query } from "firebase/firestore";
 
 const statusColors = {
   Confirmed: "bg-green-100 text-green-800",
@@ -30,34 +11,42 @@ const statusColors = {
 
 export default function ReservationReport() {
   const [reservations, setReservations] = useState([]);
-  const [userRole, setUserRole] = useState(null);
-  const [userId, setUserId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Firestore fetch for reservedSeats where status === true
   useEffect(() => {
-    // Simulate API loading delay
-    const timer = setTimeout(() => {
-      // Simulate logged-in user and role
-      const loggedInUserId = "user123"; // Change this to test different users
-      const loggedInUserRole = "user"; // Change to "admin" or "user"
+    let unsub = false;
+    const fetchReservations = async () => {
+      setIsLoading(true);
 
-      setUserId(loggedInUserId);
-      setUserRole(loggedInUserRole);
+      // Firestore query: reservation documents with status === true
+      const q = query(collection(db, "visitMap"), where("status", "==", true));
+      const querySnapshot = await getDocs(q);
+      let docs = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
 
-      if (loggedInUserRole === "admin") {
-        // Admin sees all
-        setReservations(sampleReservations);
-      } else {
-        // User sees only their reservations
-        const filtered = sampleReservations.filter(
-          (r) => r.userId === loggedInUserId
-        );
-        setReservations(filtered);
-      }
-      setIsLoading(false);
-    }, 800);
+      // Each doc is a reservation
+      let allReservations = docs.map(doc => ({
+        id: doc.id,
+        name: doc.name,
+        date: doc.date
+          ? (doc.date.seconds
+              ? new Date(doc.date.seconds * 1000)
+              : new Date(doc.date))
+          : null,
+        status: "Confirmed", // since status === true, treat as "Confirmed"
+      }));
 
-    return () => clearTimeout(timer);
+      // Sort by date descending (latest first)
+      allReservations.sort((a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0));
+
+      setReservations(allReservations);
+      if (!unsub) setIsLoading(false);
+    };
+    fetchReservations();
+    return () => { unsub = true; };
   }, []);
 
   return (
@@ -66,20 +55,14 @@ export default function ReservationReport() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Reservation Report</h2>
-            <div className="flex space-x-4 mt-2 text-sm text-gray-600">
-              <p><span className="font-medium">Role:</span> <span className="capitalize">{userRole}</span></p>
-              <p><span className="font-medium">User ID:</span> {userId}</p>
-            </div>
           </div>
           <div className="flex space-x-3">
             <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
               Export
             </button>
-            {userRole === 'admin' && (
-              <button className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
-                Manage Reservations
-              </button>
-            )}
+            <button className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+              Manage Reservations
+            </button>
           </div>
         </div>
 
@@ -93,13 +76,8 @@ export default function ReservationReport() {
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Reservation ID
+                    Client
                   </th>
-                  {userRole === 'admin' && (
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User ID
-                    </th>
-                  )}
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date & Time
                   </th>
@@ -111,7 +89,7 @@ export default function ReservationReport() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {reservations.length === 0 ? (
                   <tr>
-                    <td colSpan={userRole === 'admin' ? 4 : 3} className="px-6 py-4 whitespace-nowrap text-center text-gray-500">
+                    <td colSpan={3} className="px-6 py-4 whitespace-nowrap text-center text-gray-500">
                       No reservations found.
                     </td>
                   </tr>
@@ -119,15 +97,10 @@ export default function ReservationReport() {
                   reservations.map((reservation) => (
                     <tr key={reservation.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {reservation.id}
+                        {reservation.name}
                       </td>
-                      {userRole === 'admin' && (
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {reservation.userId}
-                        </td>
-                      )}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {format(reservation.date, "PPPpp")}
+                        {reservation.date ? format(reservation.date, "PPPpp") : "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[reservation.status]}`}>
