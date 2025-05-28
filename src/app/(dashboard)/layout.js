@@ -2,6 +2,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./../globals.css";
 import Sidenav from "./components/Sidenav";
 
+import Footir from "./components/Footir.jsx";
+
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -25,7 +28,9 @@ export default function RootLayout({ children }) {
       >
         <Sidenav />
         {children}
-        
+
+        <Footir/>
+
       </body>
     </html>
   );
