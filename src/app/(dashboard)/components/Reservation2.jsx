@@ -57,7 +57,7 @@ export default function TimeSlotSchedule() {
 
   const [slots, setSlots] = useState(initialTimeSlots);
 
-  const updateSelectedSlots = (startTime, duration) => {
+ const updateSelectedSlots = (startTime, duration) => {
   const startHour = parseInt(toMilitaryTime(startTime).split(":")[0]);
   const durationHours = parseInt(duration);
   const endHour = startHour + durationHours;
@@ -130,49 +130,49 @@ export default function TimeSlotSchedule() {
     }));
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-
-  // Get all selected time slots
-  const selectedSlots = slots
-    .filter((slot) => slot.status === "selected")
-    .map((s) => s.time)
-    .join(", ");
-
-  // Convert time to 24-hour format
-  const militaryTime = toMilitaryTime(formData.time);
-
-  // Prepare the data object to save
-  const reservationData = {
-    ...formData,
-    time: militaryTime,
-    selectedSlots,
-    timestamp: new Date() // Server timestamp if needed: serverTimestamp()
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+  
+    // Get all selected time slots
+    const selectedSlots = slots
+      .filter((slot) => slot.status === "selected")
+      .map((s) => s.time)
+      .join(", ");
+  
+    // Convert time to 24-hour format
+    const militaryTime = toMilitaryTime(formData.time);
+  
+    // Prepare the data object to save
+    const reservationData = {
+      ...formData,
+      time: militaryTime,
+      selectedSlots,
+      timestamp: new Date() // Server timestamp if needed: serverTimestamp()
+    };
+  
+    try {
+      // Save to Firestore under "meeting room" collection
+      await addDoc(collection(db, "meeting room"), reservationData);
+  
+      alert("Reservation saved to Firebase!");
+  
+      // Reset form and slots after successful submit
+      setFormData({
+        name: "",
+        email: "",
+        date: "",
+        time: "",
+        duration: "",
+        guests: "",
+        specialRequests: "",
+      });
+  
+      setSlots(initialTimeSlots); // Reset slot selection
+    } catch (error) {
+      console.error("Error adding reservation: ", error);
+      alert("Failed to save reservation. Please try again.");
+    }
   };
-
-  try {
-    // Save to Firestore under "meeting room" collection
-    await addDoc(collection(db, "meeting room"), reservationData);
-
-    alert("Reservation saved to Firebase!");
-
-    // Reset form and slots after successful submit
-    setFormData({
-      name: "",
-      email: "",
-      date: "",
-      time: "",
-      duration: "",
-      guests: "",
-      specialRequests: "",
-    });
-
-    setSlots(initialTimeSlots); // Reset slot selection
-  } catch (error) {
-    console.error("Error adding reservation: ", error);
-    alert("Failed to save reservation. Please try again.");
-  }
-};
 
   const handleSlotClick = (index) => {
     setSlots((prev) =>
@@ -188,7 +188,7 @@ const handleSubmit = async (e) => {
 
   return (
     <div className="p-4 max-w-3xl mx-auto">
-      <h1 className="text-xl font-bold mb-4">Meeting Room 1 (Good for 9 Pax Php 1,500 / hr.)</h1>
+      <h1 className="text-xl font-bold mb-4">Meeting Room 2 (Good for 12 Pax Php 1,500 / hr.)</h1>
 
       <form onSubmit={handleSubmit} className="mb-6 space-y-4">
         {/* Name */}
@@ -271,7 +271,7 @@ const handleSubmit = async (e) => {
             <option value="4 hrs">4 hrs</option>
             <option value="3 hrs">3 hrs</option>
             <option value="2 hrs">2 hrs</option>
-            <option value="1 hr">1 hrs</option>
+            <option value="1 hrs">1 hrs</option>
           </select>
         </div>
       </form>
