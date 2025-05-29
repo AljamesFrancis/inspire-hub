@@ -9,6 +9,20 @@ import seatMap3 from "../../(admin)/seatMap3.json";
 import seatMap4 from "../../(admin)/seatMap4.json";
 import seatMap5 from "../../(admin)/seatMap5.json";
 
+import {
+  Box,
+  Typography,
+  Stack,
+  Paper,
+  Divider,
+  Chip,
+  Card,
+  CardContent,
+  Tooltip
+} from "@mui/material";
+import { red, grey, blue } from "@mui/material/colors";
+import { Info as InfoIcon } from '@mui/icons-material';
+
 // Utility functions
 function groupIntoPairs(entries) {
   const groups = [];
@@ -48,11 +62,10 @@ const groupPairs5 = groupIntoPairs(rowEntries5);
 export default function OccupiedSeatsMap() {
   const [occupiedSeats, setOccupiedSeats] = useState([]);
 
-  // Fetch all occupied seats from seatMap collection
   useEffect(() => {
     async function fetchOccupiedSeats() {
       const querySnapshot = await getDocs(collection(db, "seatMap"));
-      const allSelectedSeats = querySnapshot.docs.flatMap(doc => 
+      const allSelectedSeats = querySnapshot.docs.flatMap(doc =>
         doc.data().selectedSeats || []
       );
       setOccupiedSeats(allSelectedSeats);
@@ -60,120 +73,143 @@ export default function OccupiedSeatsMap() {
     fetchOccupiedSeats();
   }, []);
 
-  // Check if a seat is occupied
   const isSeatOccupied = (seat, mapType) => {
     const seatKey = `${mapType}-${seat.number}`;
     return occupiedSeats.includes(seatKey);
   };
 
-  // Render a single seat map
   const renderSeatMap = (groupPairs, mapType, title) => (
-    <div className="flex-1 min-w-[180px]">
-      <h3 className="text-xs sm:text-sm font-semibold mb-3 text-center">
-        {title}
-      </h3>
-      <div className="space-y-4 sm:space-y-6">
-        {groupPairs.map((group, i) => (
-          <div key={i} className="flex flex-col items-start space-y-1">
-            {group.map(([rowLabel, seats]) => (
-              <div key={rowLabel}>
-                <p className="font-semibold mb-1 text-xs">{rowLabel} Row</p>
-                <div className="flex">
-                  {seats.map((seat) => {
-                    const isOccupied = isSeatOccupied(seat, mapType);
-                    
-                    let seatColorClass = "";
-                    let barColorClass = "";
-                    let hoverTitle = "";
-                    
-                    if (isOccupied) {
-                      seatColorClass = "bg-red-400 text-white";
-                      barColorClass = "bg-red-600";
-                      hoverTitle = "Occupied seat";
-                    } else if (seat.type === "window") {
-                      seatColorClass = "bg-gray-100 hover:bg-gray-200 text-gray-800";
-                      barColorClass = "bg-gray-400";
-                      hoverTitle = "Window seat (vacant)";
-                    } else {
-                      seatColorClass = "bg-gray-50 hover:bg-gray-100 text-gray-800";
-                      barColorClass = "bg-gray-300";
-                      hoverTitle = "Vacant seat";
-                    }
+    <Card variant="outlined" sx={{ minWidth: 200, flexShrink: 0 }}>
+      <CardContent>
+        <Typography variant="subtitle2" align="center" gutterBottom fontWeight="medium">
+          {title}
+        </Typography>
+        <Stack spacing={2}>
+          {groupPairs.map((group, i) => (
+            <Box key={i}>
+              {group.map(([rowLabel, seats]) => (
+                <Box key={rowLabel} mb={1}>
+                  <Typography variant="caption" fontWeight="medium">
+                    {rowLabel} Row
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} mt={0.5}>
+                    {seats.map((seat) => {
+                      const isOccupied = isSeatOccupied(seat, mapType);
+                      const isWindow = seat.type === "window";
 
-                    return (
-                      <div
-                        key={seat.id}
-                        className={`relative ${
-                          seat.type === "window" ? "mr-2 sm:mr-3" : "mr-1"
-                        }`}
-                      >
-                        <div
-                          className={`h-5 w-8 sm:h-6 sm:w-10 border-0 flex flex-col items-center justify-center ${seatColorClass}`}
-                          title={hoverTitle}
-                        >
-                          <Monitor size={8} className="mb-0.5" />
-                          <span className="text-[8px] sm:text-[10px]">
-                            {seat.number}
-                          </span>
-                        </div>
-                        <div
-                          className={`absolute top-0 left-0 w-full h-[2px] ${barColorClass}`}
-                        ></div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            {i < groupPairs.length - 1 && (
-              <div className="my-2 sm:my-3 w-full border-b border-dashed border-gray-300"></div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
+                      const seatColor = isOccupied ? red[400] : 
+                                      isWindow ? grey[200] : grey[50];
+                      const barColor = isOccupied ? red[600] : 
+                                     isWindow ? grey[400] : grey[300];
+                      const borderColor = isOccupied ? red[600] : barColor;
+                      const textColor = isOccupied ? '#fff' : grey[900];
+
+                      const tooltipTitle = isOccupied 
+                        ? "Occupied seat" 
+                        : isWindow 
+                        ? "Window seat (vacant)" 
+                        : "Vacant seat";
+
+                      return (
+                        <Tooltip key={seat.id} title={tooltipTitle} arrow>
+                          <Box position="relative" mr={isWindow ? 1 : 0.5}>
+                            <Box
+                              sx={{
+                                minWidth: 40,
+                                height: 24,
+                                p: 0,
+                                bgcolor: seatColor,
+                                color: textColor,
+                                fontSize: '0.6rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                border: `1px solid ${borderColor}`,
+                                borderRadius: 0.5,
+                              }}
+                            >
+                              <Monitor size={10} style={{ marginBottom: 2 }} />
+                              <span>{seat.number}</span>
+                            </Box>
+                            <Box
+                              position="absolute"
+                              top={0}
+                              left={0}
+                              width="100%"
+                              height={2}
+                              bgcolor={barColor}
+                            />
+                          </Box>
+                        </Tooltip>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              ))}
+              {i < groupPairs.length - 1 && <Divider sx={{ my: 1 }} />}
+            </Box>
+          ))}
+        </Stack>
+      </CardContent>
+    </Card>
   );
 
   return (
-    <div className="p-4">
-      <h1 className="text-xl sm:text-2xl font-bold mb-4">Current Seat Occupancy</h1>
-      <p className="text-sm text-gray-600 mb-6">
-        Showing all currently occupied seats across all maps
-      </p>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" fontWeight="bold" gutterBottom>
+        Current Seat Occupancy
+      </Typography>
+      <Typography variant="body1" color="text.secondary" mb={3}>
+        Real-time view of all occupied seats across workspaces
+      </Typography>
 
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <div className="flex items-center space-x-4 mb-4">
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-red-400 border border-red-600"></div>
-            <span className="text-sm">Occupied Seat</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gray-50 border border-gray-300"></div>
-            <span className="text-sm">Vacant Seat</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gray-100 border border-gray-400"></div>
-            <span className="text-sm">Window Seat</span>
-          </div>
-        </div>
+      <Paper variant="outlined" sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+        <Stack direction="row" spacing={2} mb={3} flexWrap="wrap">
+          <Chip 
+            icon={<Box sx={{ width: 14, height: 14, bgcolor: red[400], border: `1px solid ${red[600]}` }} />}
+            label="Occupied seat"
+            size="small"
+          />
+          <Chip 
+            icon={<Box sx={{ width: 14, height: 14, bgcolor: grey[50], border: `1px solid ${grey[300]}` }} />}
+            label="Vacant seat"
+            size="small"
+          />
+          <Chip 
+            icon={<Box sx={{ width: 14, height: 14, bgcolor: grey[200], border: `1px solid ${grey[400]}` }} />}
+            label="Window seat"
+            size="small"
+          />
+        </Stack>
 
-        <div className="overflow-x-auto">
-          <div className="flex flex-nowrap gap-2 sm:gap-4 justify-start min-w-max">
+        <Box sx={{ overflowX: 'auto', py: 1 }}>
+          <Stack direction="row" spacing={2} sx={{ width: 'max-content' }}>
             {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
             {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
             {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
             {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
             {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
-          </div>
-        </div>
-      </div>
+          </Stack>
+        </Box>
+      </Paper>
 
-      <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-        <h2 className="text-lg font-semibold mb-2">Occupancy Summary</h2>
-        <p className="text-sm">
-          Total occupied seats: <span className="font-bold">{occupiedSeats.length}</span>
-        </p>
-      </div>
-    </div>
+      <Card sx={{ bgcolor: blue[50], border: `1px solid ${blue[100]}` }}>
+        <CardContent>
+          <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+            <InfoIcon color="primary" />
+            <Typography variant="subtitle1" fontWeight="medium">
+              Occupancy Summary
+            </Typography>
+          </Stack>
+          <Typography variant="body1">
+            Total occupied seats: <Box component="span" fontWeight="bold">{occupiedSeats.length}</Box>
+          </Typography>
+          <Typography variant="body2" color="text.secondary" mt={1}>
+            Last updated: {new Date().toLocaleString()}
+          </Typography>
+        </CardContent>
+      </Card>
+    </Box>
   );
 }
