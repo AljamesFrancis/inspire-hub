@@ -79,7 +79,7 @@ const Page = () => {
                 />
                 
                 {/* Content Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent flex flex-col justify-end p-6 sm:p-8 md:p-10">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/70 to-transparent flex flex-col justify-end p-6 sm:p-8 md:p-10">
                           {/* Logo Overlay - Add this container */}
                           <div className="absolute top-4 right-4 w-16 h-16 sm:top-0 sm:right-90 sm:w-200 sm:h-120 md:w-150 md:h-60 z-10">
                             <img 
