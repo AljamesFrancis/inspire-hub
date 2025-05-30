@@ -2,6 +2,11 @@
 import React, { useState, useEffect } from "react";
 import { db } from "../../../../script/firebaseConfig";
 import { collection, getDocs, query, where } from "firebase/firestore";
+import seatMap1 from "../../(admin)/seatMap1.json";
+import seatMap2 from "../../(admin)/seatMap2.json";
+import seatMap3 from "../../(admin)/seatMap3.json";
+import seatMap4 from "../../(admin)/seatMap4.json";
+import seatMap5 from "../../(admin)/seatMap5.json";
 import {
   BarChart,
   Bar,
@@ -18,11 +23,16 @@ import {
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e42", "#ef4444", "#6366f1", "#fbbf24"];
 
+// Calculate total seats from all seat maps
+const totalSeats = seatMap1.length + seatMap2.length + seatMap3.length + seatMap4.length + seatMap5.length;
+
 const Dashboard = () => {
   const [seatData, setSeatData] = useState([]);
   const [visitData, setVisitData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [occupiedSeats, setOccupiedSeats] = useState([]);
+  const [availableSeats, setAvailableSeats] = useState(totalSeats);
 
   // Fetch seat map data
   useEffect(() => {
@@ -41,6 +51,20 @@ const Dashboard = () => {
     };
 
     fetchSeatData();
+  }, []);
+
+  // Fetch occupied seats
+  useEffect(() => {
+    async function fetchOccupiedSeats() {
+      const querySnapshot = await getDocs(collection(db, "seatMap"));
+      const allSelectedSeats = querySnapshot.docs.flatMap(doc =>
+        doc.data().selectedSeats || []
+      );
+      setOccupiedSeats(allSelectedSeats);
+      // Calculate available seats
+      setAvailableSeats(totalSeats - allSelectedSeats.length);
+    }
+    fetchOccupiedSeats();
   }, []);
 
   // Fetch visit map data
@@ -122,10 +146,7 @@ const Dashboard = () => {
   }));
 
   // Summaries
-  const totalSeats = seatData.length;
   const totalPendingVisits = visitData.length;
-  const totalOccupied = seatStatusCounts["occupied"] || 0;
-  const totalAvailable = seatStatusCounts["available"] || 0;
 
   if (loading) return <div>Loading data...</div>;
   if (error) return <div>Error: {error}</div>;
@@ -141,11 +162,11 @@ const Dashboard = () => {
         </div>
         <div className="bg-white shadow rounded-xl p-6">
           <h3 className="text-gray-500 text-sm font-medium">Seats Available</h3>
-          <p className="text-2xl font-bold text-green-600 mt-2">{totalAvailable}</p>
+          <p className="text-2xl font-bold text-green-600 mt-2">{availableSeats}</p>
         </div>
         <div className="bg-white shadow rounded-xl p-6">
           <h3 className="text-gray-500 text-sm font-medium">Seats Occupied</h3>
-          <p className="text-2xl font-bold text-red-600 mt-2">{totalOccupied}</p>
+          <p className="text-2xl font-bold text-red-600 mt-2">{occupiedSeats.length}</p>
         </div>
         <div className="bg-white shadow rounded-xl p-6">
           <h3 className="text-gray-500 text-sm font-medium">Pending Visits</h3>
@@ -199,7 +220,7 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {visitData.map(visit => (
             <div key={visit.id} className="bg-white p-4 rounded shadow">
-              <h3 className="font-medium">{visit.clientName || 'Guest'}</h3>
+              <h3 className="font-medium">{visit.name || 'Guest'}</h3>
               <p>Date: {visit.date || 'N/A'}</p>
               <p>Time: {visit.time || 'N/A'}</p>
             </div>

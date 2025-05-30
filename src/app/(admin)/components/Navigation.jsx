@@ -2,16 +2,14 @@
 import Image from 'next/image';
 import Link from 'next/link';
 
-// Lucide icons
-import {
-  LayoutDashboard,
-  Users,
-  Calendar,
-  BarChart,
-  Map,
-  Settings,
-  LogIn,
-} from 'lucide-react';
+// MUI Icons
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import GroupIcon from '@mui/icons-material/Group';
+import EventIcon from '@mui/icons-material/Event';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import MapIcon from '@mui/icons-material/Map';
+import SettingsIcon from '@mui/icons-material/Settings';
+import LoginIcon from '@mui/icons-material/Login';
 
 export default function Navigation() {
   return (
@@ -39,42 +37,42 @@ export default function Navigation() {
               href="/dashboard"
               className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
             >
-              <LayoutDashboard className="w-5 h-5" />
+              <DashboardIcon fontSize="small" />
               <span>Dashboard</span>
             </Link>
             <Link
               href="/schedvisit"
               className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
             >
-              <Users className="w-5 h-5" />
+              <GroupIcon fontSize="small" />
               <span>Schedule Visit</span>
             </Link>
             <Link
               href="/tenants"
               className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
             >
-              <Calendar className="w-5 h-5" />
+              <EventIcon fontSize="small" />
               <span>Tenants</span>
             </Link>
             <Link
               href="/reports"
               className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
             >
-              <BarChart className="w-5 h-5" />
+              <AssessmentIcon fontSize="small" />
               <span>Reports</span>
             </Link>
             <Link
               href="/seatmap"
               className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
             >
-              <Map className="w-5 h-5" />
+              <MapIcon fontSize="small" />
               <span>Map</span>
             </Link>
             <Link
               href="/settings"
               className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
             >
-              <Settings className="w-5 h-5" />
+              <SettingsIcon fontSize="small" />
               <span>Settings</span>
             </Link>
           </div>
@@ -82,7 +80,7 @@ export default function Navigation() {
           {/* Account Links */}
           <div className="hidden md:flex space-x-6 items-center ml-4">
             <button className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2">
-              <LogIn className="w-5 h-5" />
+              <LoginIcon fontSize="small" />
               <span>Login</span>
             </button>
           </div>
