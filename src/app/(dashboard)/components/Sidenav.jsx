@@ -31,11 +31,11 @@ const Sidenav = () => {
 
   return (
     <header className="fixed top-0 left-0 right-0 bg-[#2b2b2b] text-[#d5ae85] shadow-md z-30">
-      <div className="container mx-auto px-4 py-3 flex justify-between items-center">
+      <div className="container mx-right px-8 py-3 flex justify-between items-center">
         {/* Left Side - Logo or Title */}
-        <Link href="/" className="text-xl font-bold">
-          Log out
-        </Link>
+       
+
+        
 
         {/* Middle - Desktop Navigation */}
         <nav className="hidden md:flex space-x-6">
@@ -50,17 +50,19 @@ const Sidenav = () => {
           ))}
         </nav>
 
-        {/* Right Side - Image */}
-        <div className="hidden md:block">
+    
+        <div className="hidden md:block w-280 ">
           <Image
             src="/images/inspirelogo.png"
             alt="Partner Logo"
             width={120}
             height={40}
-            className="h-8 w-auto"
+            className="h-10 w-auto"
           />
         </div>
-
+ <Link href="/" className="text-xl font-bold">
+          Log out
+        </Link>
         {/* Mobile Toggle Button */}
         <button
           className="md:hidden text-2xl"
