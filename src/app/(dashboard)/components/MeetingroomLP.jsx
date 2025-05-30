@@ -1,4 +1,7 @@
+'use client';
+
 import React from 'react';
+import { useRouter } from 'next/navigation';
 
 const images = [
   { id: 1, url: '/images/IMG_5296.jpg', label: 'Nagoya' },
@@ -8,9 +11,14 @@ const images = [
 ];
 
 export default function FourImageFullScreen() {
+  const router = useRouter(); 
   const handleClick = (label) => {
-    alert(`You clicked: ${label}`);
+    router.push(`/meetingroom?Nagoya=${encodeURIComponent(label)}`); 
+    
   };
+
+
+
 
   return (
     <div className="w-full h-screen grid grid-cols-2 grid-rows-2 gap-2">
