@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../../../script/firebaseConfig";
 import { auth } from "../../../../script/auth";
+import Image from "next/image";
 
 const AREA_OPTIONS = [
   "areaA", "areaAA", "areaB", "areaBB", "areaBR", "areaC", "areaCC", "areaD",
@@ -54,8 +55,8 @@ const BookingForm = () => {
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [showReceipt, setShowReceipt] = useState(false);
-  const [currentFilter, setCurrentFilter] = useState("");
-  const [mapView, setMapView] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [highlightedArea, setHighlightedArea] = useState(null);
 
   const seatsForArea = SEATS_BY_AREA[selectedArea] || [];
 
@@ -78,13 +79,6 @@ const BookingForm = () => {
 
     fetchReservedSeats();
   }, [selectedArea, selectedDate, selectedTime]);
-
-  const handleSeatChange = (e) => {
-    const value = e.target.value;
-    setSelectedSeats((prev) =>
-      prev.includes(value) ? prev : [...prev, value]
-    );
-  };
 
   const handleSeatClick = (seat) => {
     if (reservedSeats.includes(seat)) return;
@@ -110,7 +104,7 @@ const BookingForm = () => {
         area: selectedArea,
         seats: selectedSeats,
         timestamp: new Date(),
-        status: "reserved",
+        status: "pending",
       });
 
       alert("Reservation submitted!");
@@ -125,234 +119,224 @@ const BookingForm = () => {
     }
   };
 
-  const renderFullMap = () => (
-    <div className="mt-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">Full Seat Map</h2>
-        <button
-          onClick={() => setMapView(false)}
-          className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
-        >
-          Back to Form
-        </button>
-      </div>
+  const filteredAreas = AREA_OPTIONS.filter(area => 
+  area.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  SEATS_BY_AREA[area].some(seat => 
+    seat.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+);
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search seats or areas..."
-          value={currentFilter}
-          onChange={(e) => setCurrentFilter(e.target.value.toLowerCase())}
-          className="border px-3 py-2 rounded w-full"
-        />
-      </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {AREA_OPTIONS.filter(area =>
-          currentFilter === "" ||
-          area.toLowerCase().includes(currentFilter) ||
-          SEATS_BY_AREA[area].some(seat => seat.toLowerCase().includes(currentFilter))
-        ).map(area => (
-          <div key={area} className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="font-bold text-lg mb-3">{area}</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-              {SEATS_BY_AREA[area]
-                .filter(seat =>
-                  currentFilter === "" ||
-                  seat.toLowerCase().includes(currentFilter) ||
-                  area.toLowerCase().includes(currentFilter)
-                )
-                .map(seat => {
-                  const isReserved = reservedSeats.includes(seat) && selectedArea === area;
-                  const isSelected = selectedSeats.includes(seat) && selectedArea === area;
+  const handleAreaHover = (area) => {
+    setHighlightedArea(area);
+  };
 
-                  return (
-                    <div
-                      key={`${area}-${seat}`}
-                      onClick={() => {
-                        if (selectedArea === area) {
-                          handleSeatClick(seat);
-                        } else {
-                          setSelectedArea(area);
-                          setSelectedSeats([seat]);
-                          setMapView(false);
-                        }
-                      }}
-                      className={`p-2 text-center rounded cursor-pointer ${
-                        isReserved
-                          ? "bg-red-500 text-white cursor-not-allowed"
-                          : isSelected
-                          ? "bg-green-500 text-white"
-                          : selectedArea === area
-                          ? "bg-blue-100 hover:bg-blue-200"
-                          : "bg-gray-200 hover:bg-gray-300"
-                      }`}
-                    >
-                      {seat}
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  const handleAreaLeave = () => {
+    setHighlightedArea(null);
+  };
 
   return (
-    <div className="min-h-screen bg-white px-4 py-6">
-      <h1 className="text-3xl font-bold mt-10 mb-4">Dedicated Seats Live View</h1>
+    <div className="min-h-screen bg-white-50">
+      <header className="bg-white ">
+        <div className="max-w-7xl mx-auto py-6 px-4 mt-15">
+          <h1 className="text-3xl font-semibold text-gray-900 mb-4">Seat Reservation</h1>
 
-      {mapView ? (
-        renderFullMap()
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block font-semibold mb-2">Select Date</label>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              required
-              className="border px-3 py-2 w-full md:w-1/2 rounded"
-            />
-          </div>
+        </div>
+      </header>
 
-          <div>
-            <label className="block font-semibold mb-2">Select Time</label>
-            <input
-              type="time"
-              value={selectedTime}
-              onChange={(e) => setSelectedTime(e.target.value)}
-              required
-              className="border px-3 py-2 w-full md:w-1/2 rounded"
-            />
-          </div>
+      <main className="max-w-7xl mx-auto py-8 px-4">
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Form Section (Left) */}
+          <div className="lg:w-1/2 bg-white p-6 rounded-lg shadow-sm">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Date</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  required
+                  className="w-full p-3 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
 
-          <div>
-            <label className="block font-semibold mb-2">Select Area</label>
-            <div className="flex gap-2">
-              <select
-                value={selectedArea}
-                onChange={(e) => {
-                  setSelectedArea(e.target.value);
-                  setSelectedSeats([]);
-                }}
-                required
-                className="border px-3 py-2 flex-1 rounded"
-              >
-                <option value="" disabled>Select seat area</option>
-                {AREA_OPTIONS.map((area) => (
-                  <option key={area} value={area}>{area}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setMapView(true)}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-              >
-                View Available Seats
-              </button>
-            </div>
-          </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Time</label>
+                <input
+                  type="time"
+                  value={selectedTime}
+                  onChange={(e) => setSelectedTime(e.target.value)}
+                  required
+                  className="w-full p-3 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
 
-          {selectedArea && (
-            <>
-              <div>
-                <label className="block font-semibold mb-2">Select Seats</label>
-                <select 
-                  onChange={handleSeatChange} 
-                  className="border px-3 py-2 w-full rounded"
-                  value=""
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Area</label>
+                <select
+                  value={selectedArea}
+                  onChange={(e) => {
+                    setSelectedArea(e.target.value);
+                    setSelectedSeats([]);
+                  }}
+                  required
+                  className="w-full p-3 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="">Choose a seat</option>
-                  {seatsForArea.map((seat) => (
-                    <option 
-                      key={seat} 
-                      value={seat} 
-                      disabled={reservedSeats.includes(seat)}
-                    >
-                      {seat} {reservedSeats.includes(seat) ? "(Reserved)" : ""}
-                    </option>
+                  <option value="" disabled>Select an area</option>
+                  {AREA_OPTIONS.map((area) => (
+                    <option key={area} value={area}>{area}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="mt-4">
-                <label className="block font-semibold mb-2">Seat Preview</label>
-                <div
-                  className="grid gap-2 w-fit"
-                  style={{ gridTemplateColumns: `repeat(${Math.min(seatsForArea.length, 6)}, 1fr)` }}
-                >
-                  {seatsForArea.map((seat) => {
-                    const isReserved = reservedSeats.includes(seat);
-                    const isSelected = selectedSeats.includes(seat);
+              {selectedArea && (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-gray-700">Available Seats</label>
+                    <div className="flex flex-wrap gap-2">
+                      {seatsForArea.map((seat) => {
+                        const isReserved = reservedSeats.includes(seat);
+                        const isSelected = selectedSeats.includes(seat);
 
-                    return (
-                      <div
-                        key={seat}
-                        onClick={() => handleSeatClick(seat)}
-                        className={`w-12 h-12 flex items-center justify-center rounded font-medium cursor-pointer
-                          ${isReserved ? "bg-red-500 text-white cursor-not-allowed"
-                          : isSelected ? "bg-green-500 text-white"
-                          : "bg-gray-200 hover:bg-gray-300"}`}
+                        return (
+                          <button
+                            key={seat}
+                            type="button"
+                            onClick={() => handleSeatClick(seat)}
+                            disabled={isReserved}
+                            className={`w-12 h-12 flex items-center justify-center rounded-md transition-colors
+                              ${isReserved ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                              : isSelected ? "bg-blue-600 text-white"
+                              : "bg-white border border-gray-200 hover:border-blue-400"}`}
+                          >
+                            {seat}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      {selectedSeats.length > 0 
+                        ? `Selected: ${selectedSeats.join(", ")}`
+                        : "Click seats to select"}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="submit"
+                      disabled={selectedSeats.length === 0}
+                      className="flex-1 p-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300"
+                    >
+                      Reserve Seats
+                    </button>
+                    {selectedSeats.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSeats([])}
+                        className="p-3 border rounded-md hover:bg-gray-50"
                       >
-                        {seat}
-                      </div>
-                    );
-                  })}
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <p className="text-sm text-gray-500 mt-2">
-                  Click seats to select. Red = reserved.
-                </p>
-              </div>
-            </>
-          )}
-
-          <div className="flex gap-4">
-            <button
-              type="submit"
-              disabled={!selectedArea || selectedSeats.length === 0}
-              className="bg-orange-600 text-white px-5 py-2 rounded hover:bg-orange-700 disabled:bg-gray-400"
-            >
-              Reserve
-            </button>
-            {selectedArea && (
-              <button
-                type="button"
-                onClick={() => setSelectedSeats([])}
-                className="bg-gray-500 text-white px-5 py-2 rounded hover:bg-gray-600"
-              >
-                Clear Selection
-              </button>
-            )}
+              )}
+            </form>
           </div>
-        </form>
-      )}
+
+          {/* Map Section (Right) */}
+          <div className="lg:w-1/2 bg-white p-6 rounded-lg shadow-sm">
+            <div className="space-y-4">
+              <h2 className="text-xl font-light text-gray-800">Seat Map Reference</h2>
+              
+              {/* Search Bar */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search areas or seats..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full p-3 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Map Image with Highlight */}
+              <div className="relative aspect-video bg-gray-100 rounded-md overflow-hidden border">
+                <Image
+                  src="/images/map.png"
+                  alt="Seat map layout"
+                  fill
+                  className="object-contain"
+                  priority
+                />
+                {highlightedArea && (
+                  <div className="absolute inset-0 bg-blue-500 bg-opacity-10 pointer-events-none"></div>
+                )}
+              </div>
+
+              {/* Search Results / Area Legend */}
+              <div className="bg-blue-50 p-4 rounded-md">
+                <h3 className="font-medium text-blue-800 mb-2">
+                  {searchTerm ? "Search Results" : "Area Legend"}
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {(searchTerm ? filteredAreas : AREA_OPTIONS.slice(0, 6)).map(area => (
+                    <div 
+                      key={area}
+                      className="flex items-center p-1 rounded hover:bg-blue-100 cursor-pointer"
+                      onMouseEnter={() => handleAreaHover(area)}
+                      onMouseLeave={handleAreaLeave}
+                      onClick={() => {
+                        setSelectedArea(area);
+                        setSelectedSeats([]);
+                      }}
+                    >
+                      <div className={`w-3 h-3 rounded-full mr-2 ${
+                        highlightedArea === area ? "bg-blue-700" : "bg-blue-500"
+                      }`}></div>
+                      <span className="text-sm">{area}</span>
+                    </div>
+                  ))}
+                </div>
+                {searchTerm && filteredAreas.length === 0 && (
+                  <p className="text-sm text-gray-500 mt-2">No areas or seats found</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
 
       {showReceipt && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold mb-4">Reservation Summary</h2>
-            <div className="space-y-2 mb-4">
-              <p><strong>Date:</strong> {selectedDate}</p>
-              <p><strong>Time:</strong> {selectedTime}</p>
-              <p><strong>Area:</strong> {selectedArea}</p>
-              <p><strong>Selected Seats:</strong> {selectedSeats.join(", ")}</p>
+          <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+            <h2 className="text-xl font-medium">Confirm Reservation</h2>
+            <div className="space-y-2 text-sm">
+              <p><span className="text-gray-600">Date:</span> {selectedDate}</p>
+              <p><span className="text-gray-600">Time:</span> {selectedTime}</p>
+              <p><span className="text-gray-600">Area:</span> {selectedArea}</p>
+              <p><span className="text-gray-600">Seats:</span> {selectedSeats.join(", ")}</p>
             </div>
-
-            <div className="flex gap-4">
+            <div className="flex gap-3 pt-2">
               <button
                 onClick={handleFinalSubmit}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex-1"
+                className="flex-1 p-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 Confirm
               </button>
               <button
                 onClick={() => setShowReceipt(false)}
-                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 flex-1"
+                className="flex-1 p-2 border rounded-md hover:bg-gray-50"
               >
-                Back
+                Cancel
               </button>
             </div>
           </div>
