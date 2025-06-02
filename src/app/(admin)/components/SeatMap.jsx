@@ -86,8 +86,36 @@ export default function OccupiedSeatsMap() {
   // Calculate remaining seats
   const remainingSeats = totalSeats - occupiedSeats.length;
 
+  // Responsive seat width: minWidth for small screens, flex for stretching
+  const responsiveSeatBoxSx = {
+    minWidth: { xs: 28, sm: 36, md: 40 },
+    width: { xs: "8vw", sm: "4vw", md: "40px" },
+    maxWidth: { xs: 40, sm: 44, md: 50 },
+    height: { xs: 20, sm: 22, md: 24 },
+    p: 0,
+    fontSize: { xs: '0.55rem', sm: '0.6rem' },
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 0.5,
+    transition: "all .15s"
+  };
+
+  // The map card itself should stretch with flex and minWidth, and be responsive
+  const responsiveMapCardSx = {
+    flexGrow: 1,
+    minWidth: { xs: 250, sm: 320, md: 360 },
+    maxWidth: { xs: "90vw", md: 420 },
+    flexBasis: { xs: "90vw", sm: "auto" },
+    flexShrink: 1,
+    width: "100%",
+    m: 0,
+    overflowX: "auto"
+  };
+
   const renderSeatMap = (groupPairs, mapType, title) => (
-    <Card variant="outlined" sx={{ minWidth: 200, flexShrink: 0 }}>
+    <Card variant="outlined" sx={responsiveMapCardSx}>
       <CardContent>
         <Typography variant="subtitle2" align="center" gutterBottom fontWeight="medium">
           {title}
@@ -96,39 +124,28 @@ export default function OccupiedSeatsMap() {
           {groupPairs.map((group, i) => (
             <Box key={i}>
               {group.map(([rowLabel, seats]) => (
-                <Box key={rowLabel} mb={1}>
+                <Box key={rowLabel} mb={1} sx={{ width: "100%" }}>
                   <Typography variant="caption" fontWeight="medium">
                     {rowLabel} Row
                   </Typography>
-                  <Stack direction="row" spacing={0.5} mt={0.5}>
+                  <Stack direction="row" spacing={0.5} mt={0.5} sx={{ width: "100%" }}>
                     {seats.map((seat) => {
                       const isOccupied = isSeatOccupied(seat, mapType);
                       const seatColor = isOccupied ? red[400] : grey[50];
                       const barColor = isOccupied ? red[600] : grey[300];
                       const borderColor = isOccupied ? red[600] : barColor;
-                      const textColor = isOccupied ? '#fff' : grey[900];
-
-                      const tooltipTitle = isOccupied 
-                        ? "Occupied seat" 
-                        : "Vacant seat";
+                      const textColor = isOccupied ? "#fff" : grey[900];
+                      const tooltipTitle = isOccupied ? "Occupied seat" : "Vacant seat";
 
                       return (
                         <Tooltip key={seat.id} title={tooltipTitle} arrow>
                           <Box position="relative" mr={0.5}>
                             <Box
                               sx={{
-                                minWidth: 40,
-                                height: 24,
-                                p: 0,
+                                ...responsiveSeatBoxSx,
                                 bgcolor: seatColor,
                                 color: textColor,
-                                fontSize: '0.6rem',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
                                 border: `1px solid ${borderColor}`,
-                                borderRadius: 0.5,
                               }}
                             >
                               <Monitor size={10} style={{ marginBottom: 2 }} />
@@ -158,7 +175,7 @@ export default function OccupiedSeatsMap() {
   );
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
       <Typography variant="h5" fontWeight="bold" gutterBottom>
         Current Seat Occupancy
       </Typography>
@@ -166,7 +183,7 @@ export default function OccupiedSeatsMap() {
         Real-time view of all occupied seats across workspaces
       </Typography>
 
-      <Paper variant="outlined" sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+      <Paper variant="outlined" sx={{ p: { xs: 1, sm: 3 }, mb: 3, borderRadius: 2 }}>
         <Stack direction="row" spacing={2} mb={3} flexWrap="wrap">
           <Chip 
             icon={<Box sx={{ width: 14, height: 14, bgcolor: red[400], border: `1px solid ${red[600]}` }} />}
@@ -180,8 +197,17 @@ export default function OccupiedSeatsMap() {
           />
         </Stack>
 
-        <Box sx={{ overflowX: 'auto', py: 1 }}>
-          <Stack direction="row" spacing={2} sx={{ width: 'max-content' }}>
+        <Box sx={{ overflowX: "auto", py: 1, width: "100%" }}>
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{
+              width: "100%",
+              flexWrap: { xs: "wrap", md: "nowrap" },
+              justifyContent: { xs: "center", md: "flex-start" },
+              alignItems: "stretch"
+            }}
+          >
             {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
             {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
             {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}

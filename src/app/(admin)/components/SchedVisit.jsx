@@ -29,7 +29,6 @@ import {
   Card,
   CardContent,
   Chip,
-  Container,
   Divider,
   Grid,
   List,
@@ -40,8 +39,6 @@ import {
   Stack,
   Typography,
   Tooltip,
-  Avatar,
-  colors,
 } from '@mui/material';
 import {
   Check as CheckIcon,
@@ -181,8 +178,36 @@ export default function ClientsPage() {
     return allSelectedSeats.includes(seatKey);
   };
 
+  // Responsive seat width (stretches/shrinks with screen)
+  const responsiveSeatBoxSx = {
+    minWidth: { xs: 28, sm: 36, md: 40 },
+    width: { xs: "8vw", sm: "4vw", md: "40px" },
+    maxWidth: { xs: 40, sm: 44, md: 50 },
+    height: { xs: 20, sm: 22, md: 24 },
+    p: 0,
+    fontSize: { xs: '0.55rem', sm: '0.6rem' },
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 0.5,
+    transition: "all .15s"
+  };
+
+  // Map card stretches responsively
+  const responsiveMapCardSx = {
+    flexGrow: 1,
+    minWidth: { xs: 250, sm: 320, md: 360 },
+    maxWidth: { xs: "90vw", md: 420 },
+    flexBasis: { xs: "90vw", sm: "auto" },
+    flexShrink: 1,
+    width: "100%",
+    m: 0,
+    overflowX: "auto"
+  };
+
   const renderSeatMap = (groupPairs, mapType, title) => (
-    <Card variant="outlined" sx={{ minWidth: 200, flexShrink: 0 }}>
+    <Card variant="outlined" sx={responsiveMapCardSx}>
       <CardContent>
         <Typography variant="subtitle2" align="center" gutterBottom>
           {title}
@@ -191,11 +216,11 @@ export default function ClientsPage() {
           {groupPairs.map((group, i) => (
             <Box key={i}>
               {group.map(([rowLabel, seats]) => (
-                <Box key={rowLabel} mb={1}>
+                <Box key={rowLabel} mb={1} sx={{ width: "100%" }}>
                   <Typography variant="caption" fontWeight="medium">
                     {rowLabel} Row
                   </Typography>
-                  <Stack direction="row" spacing={0.5} mt={0.5}>
+                  <Stack direction="row" spacing={0.5} mt={0.5} sx={{ width: "100%" }}>
                     {seats.map((seat) => {
                       const seatKey = `${mapType}-${seat.number}`;
                       const reserved = isReservedSeat(seat, mapType);
@@ -220,9 +245,7 @@ export default function ClientsPage() {
                               disabled={reserved || selected}
                               variant="contained"
                               sx={{
-                                minWidth: 40,
-                                height: 24,
-                                p: 0,
+                                ...responsiveSeatBoxSx,
                                 bgcolor: seatColor,
                                 color: reserved || selected ? 'common.white' : 'text.primary',
                                 '&:hover': {
@@ -315,7 +338,7 @@ export default function ClientsPage() {
       </Paper>
 
       {/* Main Content */}
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1, sm: 2, md: 3 } }}>
         {selectedClient ? (
           <Card sx={{ width: '100%' }}>
             <CardContent>
@@ -437,8 +460,17 @@ export default function ClientsPage() {
                       size="small"
                     />
                   </Stack>
-                  <Box sx={{ overflowX: 'auto', py: 1 }}>
-                    <Stack direction="row" spacing={2} sx={{ width: 'max-content' }}>
+                  <Box sx={{ overflowX: "auto", py: 1, width: "100%" }}>
+                    <Stack
+                      direction="row"
+                      spacing={2}
+                      sx={{
+                        width: "100%",
+                        flexWrap: { xs: "wrap", md: "nowrap" },
+                        justifyContent: { xs: "center", md: "flex-start" },
+                        alignItems: "stretch"
+                      }}
+                    >
                       {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
                       {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
                       {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
