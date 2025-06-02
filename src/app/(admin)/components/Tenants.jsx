@@ -9,8 +9,6 @@ import seatMap3 from "../../(admin)/seatMap3.json";
 import seatMap4 from "../../(admin)/seatMap4.json";
 import seatMap5 from "../../(admin)/seatMap5.json";
 import AddTenantModal from "./AddTenantsProps";
-
-// MUI Imports
 import {
   Box,
   Button,
@@ -32,10 +30,15 @@ import {
   Divider,
   Card,
   CardContent,
+  Pagination,
+  Avatar,
+  Tooltip,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
-import { blue, green, grey, red } from "@mui/material/colors";
+import { blue, green, grey, red, purple } from "@mui/material/colors";
 
 // Utility functions
 function groupIntoPairs(entries) {
@@ -45,7 +48,6 @@ function groupIntoPairs(entries) {
   }
   return groups;
 }
-
 function groupSeatsByRow(seatMap) {
   return seatMap.reduce((acc, seat) => {
     const row = seat.number[0];
@@ -54,32 +56,38 @@ function groupSeatsByRow(seatMap) {
     return acc;
   }, {});
 }
-
 const groupedSeats1 = groupSeatsByRow(seatMap1);
 const groupedSeats2 = groupSeatsByRow(seatMap2);
 const groupedSeats3 = groupSeatsByRow(seatMap3);
 const groupedSeats4 = groupSeatsByRow(seatMap4);
 const groupedSeats5 = groupSeatsByRow(seatMap5);
-
 const rowEntries1 = Object.entries(groupedSeats1).sort(([a], [b]) => a.localeCompare(b));
 const rowEntries2 = Object.entries(groupedSeats2).sort(([a], [b]) => a.localeCompare(b));
 const rowEntries3 = Object.entries(groupedSeats3).sort(([a], [b]) => a.localeCompare(b));
 const rowEntries4 = Object.entries(groupedSeats4).sort(([a], [b]) => a.localeCompare(b));
 const rowEntries5 = Object.entries(groupedSeats5).sort(([a], [b]) => a.localeCompare(b));
-
 const groupPairs1 = groupIntoPairs(rowEntries1);
 const groupPairs2 = groupIntoPairs(rowEntries2);
 const groupPairs3 = groupIntoPairs(rowEntries3);
 const groupPairs4 = groupIntoPairs(rowEntries4);
 const groupPairs5 = groupIntoPairs(rowEntries5);
 
+const ITEMS_PER_PAGE = 8;
+
 export default function SeatMapTable() {
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showTenantDetails, setShowTenantDetails] = useState(false);
+  const [tenantDetailsClient, setTenantDetailsClient] = useState(null);
 
-  // Fetch seatMap collection
+  // Tabs state
+  const [tabIndex, setTabIndex] = useState(0);
+
+  // Pagination state for each tab
+  const [page, setPage] = useState([1, 1, 1]);
+
   useEffect(() => {
     async function fetchData() {
       const querySnapshot = await getDocs(collection(db, "seatMap"));
@@ -101,6 +109,33 @@ export default function SeatMapTable() {
     setClients(docs);
   };
 
+  // Filtering logic per tab
+  const dedicatedDeskClients = clients.filter(
+    (client) =>
+      client.type === "dedicated" ||
+      (!client.type &&
+        client.selectedSeats &&
+        client.selectedSeats.length > 0 &&
+        (!client.officeType || client.officeType === "dedicated desk"))
+  );
+  const privateOfficeClients = clients.filter(
+    (client) =>
+      client.type === "private" ||
+      client.officeType === "private office"
+  );
+  const virtualOfficeClients = clients.filter(
+    (client) =>
+      client.type === "virtual" ||
+      client.officeType === "virtual office" ||
+      (client.selectedSeats && client.selectedSeats.length === 0)
+  );
+  const tabClientSets = [dedicatedDeskClients, privateOfficeClients, virtualOfficeClients];
+
+  const totalPages = tabClientSets.map((set) => Math.ceil(set.length / ITEMS_PER_PAGE));
+  const paginatedClients = tabClientSets.map((set, i) =>
+    set.slice((page[i] - 1) * ITEMS_PER_PAGE, page[i] * ITEMS_PER_PAGE)
+  );
+
   // Rendering seat map modal (as card grid, like your preferred MUI map)
   const renderSeatMap = (groupPairs, mapType, title) => (
     <Card variant="outlined" sx={{ minWidth: 200, flexShrink: 0 }}>
@@ -121,43 +156,21 @@ export default function SeatMapTable() {
                       const seatKey = `${mapType}-${seat.number}`;
                       const isSelected = selectedClient?.selectedSeats?.includes(seatKey);
                       const isWindow = seat.type === "window";
-
-                      let seatBg = grey[100];
-                      let seatColor = grey[800];
-                      let barColor = grey[300];
-
+                      let seatBg = grey[100], seatColor = grey[800], barColor = grey[300];
                       if (isSelected) {
-                        seatBg = green[400];
-                        seatColor = "#fff";
-                        barColor = red[600];
+                        seatBg = green[400]; seatColor = "#fff"; barColor = red[600];
                       } else if (isWindow) {
-                        seatBg = grey[200];
-                        seatColor = grey[900];
-                        barColor = grey[400];
-                      } else {
-                        seatBg = grey[50];
-                        seatColor = grey[800];
-                        barColor = grey[300];
+                        seatBg = grey[200]; seatColor = grey[900]; barColor = grey[400];
                       }
-
                       return (
                         <Box key={seat.id} position="relative" mr={isWindow ? 1 : 0.5}>
                           <Box
                             sx={{
-                              minWidth: 40,
-                              height: 24,
-                              p: 0,
-                              bgcolor: seatBg,
-                              color: seatColor,
-                              fontSize: '0.6rem',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              border: `1px solid ${barColor}`,
-                              borderRadius: 0.5,
-                            }}
-                          >
+                              minWidth: 40, height: 24, p: 0,
+                              bgcolor: seatBg, color: seatColor, fontSize: '0.6rem',
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                              border: `1px solid ${barColor}`, borderRadius: 0.5,
+                            }}>
                             <Monitor size={10} style={{ marginBottom: 2 }} />
                             <span>{seat.number}</span>
                           </Box>
@@ -183,83 +196,234 @@ export default function SeatMapTable() {
     </Card>
   );
 
+  const renderTenantDetails = () => (
+    <Dialog
+      open={showTenantDetails}
+      onClose={() => setShowTenantDetails(false)}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+        <Box>
+          <Typography variant="h6" fontWeight={700}>
+            Tenant Details
+          </Typography>
+          <Typography variant="subtitle2" color="text.secondary">
+            {tenantDetailsClient?.company}
+          </Typography>
+        </Box>
+        <IconButton
+          onClick={() => setShowTenantDetails(false)}
+          aria-label="close"
+          size="large"
+          sx={{ ml: 2 }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2}>
+          <Box>
+            <Typography variant="subtitle2">Name</Typography>
+            <Typography variant="body2">{tenantDetailsClient?.name}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="subtitle2">Company</Typography>
+            <Typography variant="body2">{tenantDetailsClient?.company}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="subtitle2">Email</Typography>
+            <Typography variant="body2">{tenantDetailsClient?.email || "N/A"}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="subtitle2">Phone</Typography>
+            <Typography variant="body2">{tenantDetailsClient?.phone || "N/A"}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="subtitle2">Selected Seats</Typography>
+            <Typography variant="body2">
+              {tenantDetailsClient?.selectedSeats && tenantDetailsClient.selectedSeats.length > 0
+                ? tenantDetailsClient.selectedSeats.join(", ")
+                : "None"}
+            </Typography>
+          </Box>
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setShowTenantDetails(false)} color="primary" variant="outlined">
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
+  // Add button for each tab
+  const tabAddButtons = [
+    <Button
+      key="dedicated"
+      variant="contained"
+      startIcon={<AddIcon />}
+      onClick={() => setShowAddModal(true)}
+      sx={{ bgcolor: blue[600], "&:hover": { bgcolor: blue[700] }, mb: 2 }}
+      fullWidth
+    >
+      Add Dedicated Desk Tenant
+    </Button>,
+    <Button
+      key="private"
+      variant="contained"
+      startIcon={<AddIcon />}
+      onClick={() => setShowAddModal(true)}
+      sx={{ bgcolor: blue[600], "&:hover": { bgcolor: blue[700] }, mb: 2 }}
+      fullWidth
+    >
+      Add Private Office Tenant
+    </Button>,
+    <Button
+      key="virtual"
+      variant="contained"
+      startIcon={<AddIcon />}
+      onClick={() => setShowAddModal(true)}
+      sx={{ bgcolor: blue[600], "&:hover": { bgcolor: blue[700] }, mb: 2 }}
+      fullWidth
+    >
+      Add Virtual Office Tenant
+    </Button>,
+  ];
+
   return (
     <Box p={3}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={4}>
-        <Typography variant="h4" fontWeight={700}>
-          Tenants
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setShowAddModal(true)}
-          sx={{ bgcolor: blue[600], "&:hover": { bgcolor: blue[700] } }}
-        >
-          Add Tenant
-        </Button>
-      </Stack>
+      <Typography variant="h4" fontWeight={700} mb={4}>
+        Tenants
+      </Typography>
+      <Tabs
+        value={tabIndex}
+        onChange={(_, newValue) => setTabIndex(newValue)}
+        sx={{ mb: 3 }}
+        indicatorColor="primary"
+        textColor="primary"
+        centered
+      >
+        <Tab label="Dedicated Desk" />
+        <Tab label="Private Office" />
+        <Tab label="Virtual Office" />
+      </Tabs>
+      {tabAddButtons[tabIndex]}
       <Paper elevation={2}>
         <TableContainer>
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: grey[100] }}>
                 <TableCell>
-                  <Typography variant="caption" fontWeight={600}>
-                    Client Name
-                  </Typography>
+                  <Typography variant="caption" fontWeight={600}>Company</Typography>
                 </TableCell>
                 <TableCell>
-                  <Typography variant="caption" fontWeight={600}>
-                    Company
-                  </Typography>
+                  <Typography variant="caption" fontWeight={600}>Client Name</Typography>
                 </TableCell>
                 <TableCell>
-                  <Typography variant="caption" fontWeight={600}>
-                    Selected Seats
-                  </Typography>
+                  <Typography variant="caption" fontWeight={600}>Email</Typography>
                 </TableCell>
                 <TableCell>
-                  <Typography variant="caption" fontWeight={600}>
-                    Actions
-                  </Typography>
+                  <Typography variant="caption" fontWeight={600}>Phone</Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="caption" fontWeight={600}>Selected Seats</Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="caption" fontWeight={600}>Actions</Typography>
                 </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {clients.map((client) => (
+              {paginatedClients[tabIndex].map((client) => (
                 <TableRow key={client.id} hover>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={500}>{client.name}</Typography>
-                  </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">{client.company}</Typography>
                   </TableCell>
                   <TableCell>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Avatar sx={{ bgcolor: purple[500], width: 28, height: 28, fontSize: 16 }}>
+                        {client.name?.[0]?.toUpperCase() || "?"}
+                      </Avatar>
+                      <Typography variant="body2" fontWeight={500}>{client.name}</Typography>
+                    </Stack>
+                  </TableCell>
+                  <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {client.selectedSeats && client.selectedSeats.length > 0
-                        ? `${client.selectedSeats.length} seat${client.selectedSeats.length > 1 ? "s" : ""}`
-                        : "0"}
+                      {client.email || "N/A"}
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="text"
-                      sx={{ color: blue[700], fontWeight: 600 }}
-                      onClick={() => {
-                        setSelectedClient(client);
-                        setShowModal(true);
-                      }}
-                    >
-                      View Map
-                    </Button>
+                    <Typography variant="body2" color="text.secondary">
+                      {client.phone || "N/A"}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      {client.selectedSeats && client.selectedSeats.length > 0
+                        ? client.selectedSeats.map((seat, idx) => (
+                            <Chip
+                              key={idx}
+                              label={seat}
+                              size="small"
+                              sx={{
+                                bgcolor: blue[50],
+                                color: blue[800],
+                                mb: 0.5,
+                              }}
+                            />
+                          ))
+                        : <Typography variant="body2" color="text.secondary">None</Typography>}
+                    </Stack>
+                  </TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={1}>
+                      <Tooltip title="View Seat Map">
+                        <Button
+                          variant="text"
+                          sx={{ color: blue[700], fontWeight: 600, textTransform: 'none' }}
+                          onClick={() => {
+                            setSelectedClient(client);
+                            setShowModal(true);
+                          }}
+                        >
+                          View Map
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="View Details">
+                        <Button
+                          variant="text"
+                          sx={{ color: green[700], fontWeight: 600, textTransform: 'none' }}
+                          onClick={() => {
+                            setTenantDetailsClient(client);
+                            setShowTenantDetails(true);
+                          }}
+                        >
+                          Details
+                        </Button>
+                      </Tooltip>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
+        <Stack direction="row" justifyContent="center" mt={3} mb={2}>
+          <Pagination
+            count={totalPages[tabIndex]}
+            page={page[tabIndex]}
+            onChange={(_, val) => {
+              const newPages = [...page];
+              newPages[tabIndex] = val;
+              setPage(newPages);
+            }}
+            color="primary"
+            showFirstButton
+            showLastButton
+          />
+        </Stack>
       </Paper>
-
       {/* View Seat Map Modal */}
       <Dialog
         open={showModal}
@@ -324,7 +488,8 @@ export default function SeatMapTable() {
           </Button>
         </DialogActions>
       </Dialog>
-
+      {/* Tenant Details Modal */}
+      {showTenantDetails && renderTenantDetails()}
       {/* Add Tenant Modal */}
       {showAddModal && (
         <AddTenantModal 
