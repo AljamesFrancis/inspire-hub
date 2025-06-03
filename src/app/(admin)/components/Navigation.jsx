@@ -10,6 +10,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import MapIcon from '@mui/icons-material/Map';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LoginIcon from '@mui/icons-material/Login';
+import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
 
 export default function Navigation() {
   return (
@@ -46,6 +47,13 @@ export default function Navigation() {
             >
               <GroupIcon fontSize="small" />
               <span>Schedule Visit</span>
+            </Link>
+            <Link
+              href="/meetingroomreceiving"
+              className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
+            >
+              <MeetingRoomIcon fontSize="small" />
+              <span>Meeting Room</span>
             </Link>
             <Link
               href="/tenants"

@@ -21,9 +21,30 @@ import {
   Divider,
   Card,
   CardContent,
+  Tabs,
+  Tab,
+  Grid,
+  InputAdornment,
+  Avatar,
+  Paper,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
-import { blue, green, grey, red } from "@mui/material/colors";
+import {
+  blue,
+  green,
+  grey,
+  red,
+  orange,
+  purple,
+} from "@mui/material/colors";
+import {
+  Person as PersonIcon,
+  Business as BusinessIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  Home as HomeIcon,
+  Chair as ChairIcon,
+} from "@mui/icons-material";
 
 // Import seat maps and utility functions
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -54,11 +75,21 @@ const groupedSeats3 = groupSeatsByRow(seatMap3);
 const groupedSeats4 = groupSeatsByRow(seatMap4);
 const groupedSeats5 = groupSeatsByRow(seatMap5);
 
-const rowEntries1 = Object.entries(groupedSeats1).sort(([a], [b]) => a.localeCompare(b));
-const rowEntries2 = Object.entries(groupedSeats2).sort(([a], [b]) => a.localeCompare(b));
-const rowEntries3 = Object.entries(groupedSeats3).sort(([a], [b]) => a.localeCompare(b));
-const rowEntries4 = Object.entries(groupedSeats4).sort(([a], [b]) => a.localeCompare(b));
-const rowEntries5 = Object.entries(groupedSeats5).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries1 = Object.entries(groupedSeats1).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
+const rowEntries2 = Object.entries(groupedSeats2).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
+const rowEntries3 = Object.entries(groupedSeats3).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
+const rowEntries4 = Object.entries(groupedSeats4).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
+const rowEntries5 = Object.entries(groupedSeats5).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
 
 const groupPairs1 = groupIntoPairs(rowEntries1);
 const groupPairs2 = groupIntoPairs(rowEntries2);
@@ -74,11 +105,25 @@ export default function AddTenantModal({
   const [newTenant, setNewTenant] = useState({
     name: "",
     company: "",
+    email: "",
+    phone: "",
+    address: "",
     selectedSeats: [],
   });
   const [tempSelectedSeats, setTempSelectedSeats] = useState([]);
   const [occupiedSeats, setOccupiedSeats] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errors, setErrors] = useState({
+    name: false,
+    company: false,
+    email: false,
+    phone: false,
+    address: false,
+    seats: false,
+  });
+
+  // Tabs state
+  const [tabIndex, setTabIndex] = useState(0);
 
   // Fetch all occupied seats from the database
   useEffect(() => {
@@ -103,14 +148,31 @@ export default function AddTenantModal({
     if (showAddModal) {
       setIsLoading(true);
       fetchOccupiedSeats();
+      setTabIndex(0); // Reset tab to first tab when opening
     }
   }, [showAddModal]);
 
+  const validateForm = () => {
+    const newErrors = {
+      name: !newTenant.name,
+      company: !newTenant.company,
+      email: !newTenant.email || !/^\S+@\S+\.\S+$/.test(newTenant.email),
+      phone: !newTenant.phone,
+      address: !newTenant.address,
+      seats: tempSelectedSeats.length === 0,
+    };
+    setErrors(newErrors);
+    return !Object.values(newErrors).some(Boolean);
+  };
+
   const handleAddTenant = async () => {
+    if (!validateForm()) return;
+
     try {
       const tenantWithSeats = {
         ...newTenant,
         selectedSeats: tempSelectedSeats,
+        createdAt: new Date().toISOString(),
       };
 
       await addDoc(collection(db, "seatMap"), tenantWithSeats);
@@ -129,9 +191,21 @@ export default function AddTenantModal({
     setNewTenant({
       name: "",
       company: "",
+      email: "",
+      phone: "",
+      address: "",
       selectedSeats: [],
     });
     setTempSelectedSeats([]);
+    setTabIndex(0);
+    setErrors({
+      name: false,
+      company: false,
+      email: false,
+      phone: false,
+      address: false,
+      seats: false,
+    });
   };
 
   const toggleSeatSelection = (seatKey) => {
@@ -145,13 +219,23 @@ export default function AddTenantModal({
         ? prev.filter((seat) => seat !== seatKey)
         : [...prev, seatKey]
     );
+    setErrors((prev) => ({ ...prev, seats: false }));
   };
 
-  // --- MUI Card style map (same as previous prompt style)
+  const handleInputChange = (field, value) => {
+    setNewTenant({ ...newTenant, [field]: value });
+    setErrors((prev) => ({ ...prev, [field]: false }));
+  };
+
   const renderSeatMap = (groupPairs, mapType, title) => (
     <Card variant="outlined" sx={{ minWidth: 200, flexShrink: 0 }}>
       <CardContent>
-        <Typography variant="subtitle2" align="center" gutterBottom fontWeight="medium">
+        <Typography
+          variant="subtitle2"
+          align="center"
+          gutterBottom
+          fontWeight="medium"
+        >
           {title}
         </Typography>
         <Stack spacing={2}>
@@ -194,7 +278,11 @@ export default function AddTenantModal({
                       const disabled = isOccupied;
 
                       return (
-                        <Box key={seat.id} position="relative" mr={isWindow ? 1 : 0.5}>
+                        <Box
+                          key={seat.id}
+                          position="relative"
+                          mr={isWindow ? 1 : 0.5}
+                        >
                           <Button
                             variant="contained"
                             disableElevation
@@ -204,16 +292,16 @@ export default function AddTenantModal({
                               p: 0,
                               bgcolor: seatBg,
                               color: seatColor,
-                              fontSize: '0.6rem',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              justifyContent: 'center',
+                              fontSize: "0.6rem",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              justifyContent: "center",
                               border: `1px solid ${barColor}`,
                               borderRadius: 0.5,
                               boxShadow: "none",
                               cursor: disabled ? "not-allowed" : "pointer",
-                              '&:hover': {
+                              "&:hover": {
                                 bgcolor: disabled
                                   ? seatBg
                                   : isSelected
@@ -264,97 +352,362 @@ export default function AddTenantModal({
       maxWidth="xl"
       fullWidth
       PaperProps={{
-        sx: { maxHeight: "90vh" },
+        sx: { maxHeight: "90vh", borderRadius: 3 },
       }}
     >
-      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-        <Typography  fontWeight={700}>
-          Add New Tenant
-        </Typography>
-        <IconButton onClick={handleClose} aria-label="close" size="large" sx={{ ml: 2 }}>
+      <DialogTitle
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          bgcolor: blue[50],
+          borderBottom: `1px solid ${grey[200]}`,
+        }}
+      >
+        <Box display="flex" alignItems="center">
+          <Avatar sx={{ bgcolor: blue[500], mr: 2, width: 32, height: 32 }}>
+            <PersonIcon fontSize="small" />
+          </Avatar>
+          <Typography variant="h6" fontWeight={700}>
+            Add New Tenant
+          </Typography>
+        </Box>
+        <IconButton
+          onClick={handleClose}
+          aria-label="close"
+          size="small"
+          sx={{
+            "&:hover": { bgcolor: grey[100] },
+          }}
+        >
           <CloseIcon />
         </IconButton>
       </DialogTitle>
       <DialogContent dividers>
         {isLoading ? (
-          <Box display="flex" justifyContent="center" alignItems="center" minHeight={256}>
+          <Box
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            minHeight={256}
+          >
             <CircularProgress color="primary" size={56} thickness={4} />
           </Box>
         ) : (
           <>
-            <Stack direction={{ xs: "column", md: "row" }} spacing={3} mb={4}>
-              <TextField
-                label="Tenant Name"
-                fullWidth
-                value={newTenant.name}
-                onChange={(e) =>
-                  setNewTenant({ ...newTenant, name: e.target.value })
+            <Tabs
+              value={tabIndex}
+              onChange={(_, v) => setTabIndex(v)}
+              sx={{ mb: 3 }}
+              variant="fullWidth"
+              centered
+              indicatorColor="primary"
+              textColor="primary"
+            >
+              <Tab
+                label={
+                  <Box display="flex" alignItems="center">
+                    <PersonIcon fontSize="small" sx={{ mr: 1 }} />
+                    Tenant Details
+                  </Box>
                 }
-                variant="outlined"
               />
-              <TextField
-                label="Company"
-                fullWidth
-                value={newTenant.company}
-                onChange={(e) =>
-                  setNewTenant({ ...newTenant, company: e.target.value })
+              <Tab
+                label={
+                  <Box display="flex" alignItems="center">
+                    <ChairIcon fontSize="small" sx={{ mr: 1 }} />
+                    Seat Selection
+                  </Box>
                 }
-                variant="outlined"
               />
-            </Stack>
-            <Box mb={2}>
-              <Typography fontWeight={600} gutterBottom>
-                Selected Seats:
-              </Typography>
-              {tempSelectedSeats.length > 0 ? (
-                <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                  {tempSelectedSeats.map((seat, idx) => (
-                    <Chip
-                      key={idx}
-                      label={seat}
-                      size="small"
-                      sx={{ bgcolor: blue[50], color: blue[800], mb: 0.5 }}
+            </Tabs>
+
+            {/* Tenant Details Tab */}
+            {tabIndex === 0 && (
+              <Box>
+                <Grid container spacing={3} mb={3} direction="column">
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Tenant Name"
+                      fullWidth
+                      value={newTenant.name}
+                      onChange={(e) =>
+                        handleInputChange("name", e.target.value)
+                      }
+                      variant="outlined"
+                      error={errors.name}
+                      helperText={errors.name ? "Name is required" : ""}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <PersonIcon color={errors.name ? "error" : "action"} />
+                          </InputAdornment>
+                        ),
+                      }}
                     />
-                  ))}
-                </Stack>
-              ) : (
-                <Typography color="text.secondary">
-                  No seats selected
-                </Typography>
-              )}
-            </Box>
-            <Box bgcolor={grey[50]} p={2} borderRadius={2}>
-              <Box
-                sx={{
-                  overflowX: "auto",
-                  width: "100%",
-                  minWidth: "max-content",
-                  pb: 1,
-                }}
-              >
-                <Stack direction="row" spacing={2} minWidth="max-content">
-                  {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
-                  {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
-                  {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
-                  {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
-                  {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
-                </Stack>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Company"
+                      fullWidth
+                      value={newTenant.company}
+                      onChange={(e) =>
+                        handleInputChange("company", e.target.value)
+                      }
+                      variant="outlined"
+                      error={errors.company}
+                      helperText={errors.company ? "Company is required" : ""}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <BusinessIcon color={errors.company ? "error" : "action"} />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Email"
+                      fullWidth
+                      value={newTenant.email}
+                      onChange={(e) =>
+                        handleInputChange("email", e.target.value)
+                      }
+                      variant="outlined"
+                      type="email"
+                      error={errors.email}
+                      helperText={
+                        errors.email
+                          ? !newTenant.email
+                            ? "Email is required"
+                            : "Please enter a valid email"
+                          : ""
+                      }
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <EmailIcon color={errors.email ? "error" : "action"} />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Phone"
+                      fullWidth
+                      value={newTenant.phone}
+                      onChange={(e) =>
+                        handleInputChange("phone", e.target.value)
+                      }
+                      variant="outlined"
+                      type="tel"
+                      error={errors.phone}
+                      helperText={errors.phone ? "Phone is required" : ""}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <PhoneIcon color={errors.phone ? "error" : "action"} />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Address"
+                      fullWidth
+                      value={newTenant.address}
+                      onChange={(e) =>
+                        handleInputChange("address", e.target.value)
+                      }
+                      variant="outlined"
+                      multiline
+                      rows={2}
+                      error={errors.address}
+                      helperText={errors.address ? "Address is required" : ""}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <HomeIcon color={errors.address ? "error" : "action"} />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+                </Grid>
+
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    bgcolor: grey[50],
+                    borderRadius: 2,
+                    border: `1px solid ${errors.seats ? red[200] : grey[200]}`,
+                  }}
+                >
+                  <Box display="flex" alignItems="center" mb={1}>
+                    <ChairIcon
+                      color={errors.seats ? "error" : "action"}
+                      sx={{ mr: 1 }}
+                    />
+                    <Typography
+                      fontWeight={600}
+                      color={errors.seats ? "error" : "text.primary"}
+                    >
+                      Selected Seats:
+                    </Typography>
+                  </Box>
+                  {tempSelectedSeats.length > 0 ? (
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      {tempSelectedSeats.map((seat, idx) => (
+                        <Chip
+                          key={idx}
+                          label={seat}
+                          size="small"
+                          sx={{
+                            bgcolor: blue[50],
+                            color: blue[800],
+                            mb: 0.5,
+                            "& .MuiChip-deleteIcon": {
+                              color: blue[400],
+                              "&:hover": { color: blue[600] },
+                            },
+                          }}
+                          onDelete={() =>
+                            setTempSelectedSeats((prev) =>
+                              prev.filter((s) => s !== seat)
+                            )
+                          }
+                        />
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Typography
+                      color={errors.seats ? "error" : "text.secondary"}
+                    >
+                      {errors.seats
+                        ? "Please select at least one seat"
+                        : "No seats selected"}
+                    </Typography>
+                  )}
+                </Paper>
               </Box>
-            </Box>
+            )}
+
+            {/* Seat Map Tab */}
+            {tabIndex === 1 && (
+              <Box>
+                <Box
+                  sx={{
+                    mb: 3,
+                    p: 2,
+                    bgcolor: blue[50],
+                    borderRadius: 2,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  <Box>
+                    <Typography fontWeight={600} gutterBottom>
+                      Seat Selection Guide
+                    </Typography>
+                    <Stack direction="row" spacing={2}>
+                      <Box display="flex" alignItems="center">
+                        <Box
+                          width={16}
+                          height={16}
+                          bgcolor={green[400]}
+                          mr={1}
+                          border={`1px solid ${green[600]}`}
+                        />
+                        <Typography variant="caption">Selected</Typography>
+                      </Box>
+                      <Box display="flex" alignItems="center">
+                        <Box
+                          width={16}
+                          height={16}
+                          bgcolor={red[400]}
+                          mr={1}
+                          border={`1px solid ${red[600]}`}
+                        />
+                        <Typography variant="caption">Occupied</Typography>
+                      </Box>
+                      <Box display="flex" alignItems="center">
+                        <Box
+                          width={16}
+                          height={16}
+                          bgcolor={grey[200]}
+                          mr={1}
+                          border={`1px solid ${grey[400]}`}
+                        />
+                        <Typography variant="caption">Window</Typography>
+                      </Box>
+                      <Box display="flex" alignItems="center">
+                        <Box
+                          width={16}
+                          height={16}
+                          bgcolor={grey[50]}
+                          mr={1}
+                          border={`1px solid ${grey[300]}`}
+                        />
+                        <Typography variant="caption">Available</Typography>
+                      </Box>
+                    </Stack>
+                  </Box>
+                </Box>
+
+                <Box
+                  sx={{
+                    overflowX: "auto",
+                    width: "100%",
+                    minWidth: "max-content",
+                    pb: 1,
+                  }}
+                >
+                  <Stack direction="row" spacing={2} minWidth="max-content">
+                    {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
+                    {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
+                    {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
+                    {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
+                    {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
+                  </Stack>
+                </Box>
+              </Box>
+            )}
           </>
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose} variant="outlined" color="primary">
+      <DialogActions
+        sx={{
+          p: 2,
+          borderTop: `1px solid ${grey[200]}`,
+          bgcolor: grey[50],
+        }}
+      >
+        <Button
+          onClick={handleClose}
+          variant="outlined"
+          color="inherit"
+          sx={{
+            color: grey[700],
+            borderColor: grey[400],
+            "&:hover": { bgcolor: grey[100] },
+          }}
+        >
           Cancel
         </Button>
         <Button
           onClick={handleAddTenant}
-          disabled={
-            !newTenant.name || !newTenant.company || tempSelectedSeats.length === 0 || isLoading
-          }
           variant="contained"
           color="primary"
+          sx={{
+            fontWeight: 700,
+            color: "#fff",
+            boxShadow: "none",
+            px: 4,
+          }}
         >
           Add Tenant
         </Button>
