@@ -74,7 +74,7 @@ const AdminDashboard = () => {
             <th className="border px-2 py-1 text-center">Date</th>
             <th className="border px-2 py-1 text-center">Time</th>
              <th className="border px-2 py-1 text-center">Duration</th>
-            <th className="border px-2 py-1 text-center">Guests</th>
+            <th className="border px-2 py-1 text-center">Guests List</th>
             <th className="border px-2 py-1 text-center">Actions</th>
           </tr>
         </thead>
@@ -157,19 +157,24 @@ const AdminDashboard = () => {
 
 
               </td>
-              <td className="border px-2 py-1 ">
-                {editId === res.id ? (
-                  <input
-                    value={editedData.guests || ""}
-                    onChange={(e) =>
-                      setEditedData({ ...editedData, guests: e.target.value })
-                    }
-                    className="border p-1"
-                  />
-                ) : (
-                  res.guests
-                )}
-              </td>
+              <td className="border px-2 py-1">
+  {editId === res.id ? (
+    <input
+      value={editedData.guests || ""}
+      onChange={(e) =>
+        setEditedData({ ...editedData, guests: e.target.value })
+      }
+      className="border p-1"
+    />
+  ) : (
+    Array.isArray(res.guests)
+      ? res.guests.join(", ")
+      : typeof res.guests === "string"
+        ? res.guests.split(",").map(g => g.trim()).join(", ")
+        : "-"
+  )}
+</td>
+
               <td className="border px-4 py-2 space-x-2 w-44 whitespace-nowrap">
                 {editId === res.id ? (
                   <>
