@@ -18,10 +18,15 @@ import {
   Chip,
   Card,
   CardContent,
-  Tooltip
+  Tooltip,
+  Tabs,
+  Tab,
+  List,
+  ListItem,
+  ListItemText
 } from "@mui/material";
-import { red, grey, blue } from "@mui/material/colors";
-import { Info as InfoIcon } from '@mui/icons-material';
+import { red, grey, blue, purple } from "@mui/material/colors";
+import { Info as InfoIcon, MeetingRoom as MeetingRoomIcon } from '@mui/icons-material';
 
 // Utility functions
 function groupIntoPairs(entries) {
@@ -65,18 +70,51 @@ const totalSeats = seatMap1.length + seatMap2.length + seatMap3.length + seatMap
 export default function OccupiedSeatsMap() {
   const [occupiedSeats, setOccupiedSeats] = useState([]);
   const [lastUpdated, setLastUpdated] = useState('');
+  const [tabIndex, setTabIndex] = useState(0);
+
+  // For private office data
+  const [privateOfficeList, setPrivateOfficeList] = useState([]);
+  const [occupiedPrivateOffices, setOccupiedPrivateOffices] = useState([]);
 
   useEffect(() => {
-    async function fetchOccupiedSeats() {
-      const querySnapshot = await getDocs(collection(db, "seatMap"));
-      const allSelectedSeats = querySnapshot.docs.flatMap(doc =>
-        doc.data().selectedSeats || []
-      );
-      setOccupiedSeats(allSelectedSeats);
-      setLastUpdated(new Date().toLocaleString());
+    if (tabIndex === 0) {
+      async function fetchOccupiedSeats() {
+        const querySnapshot = await getDocs(collection(db, "seatMap"));
+        const allSelectedSeats = querySnapshot.docs.flatMap(doc =>
+          doc.data().selectedSeats || []
+        );
+        setOccupiedSeats(allSelectedSeats);
+        setLastUpdated(new Date().toLocaleString());
+      }
+      fetchOccupiedSeats();
     }
-    fetchOccupiedSeats();
-  }, []);
+    if (tabIndex === 1) {
+      async function fetchPrivateOffices() {
+        const querySnapshot = await getDocs(collection(db, "privateOffice"));
+        const officeDocs = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        setPrivateOfficeList(officeDocs);
+
+        // Gather all selectedPOs (can be array or string)
+        const allSelectedPO = [];
+        officeDocs.forEach(office => {
+          if (office.selectedPO) {
+            if (Array.isArray(office.selectedPO)) {
+              allSelectedPO.push(...office.selectedPO);
+            } else {
+              allSelectedPO.push(office.selectedPO);
+            }
+          }
+        });
+        setOccupiedPrivateOffices(allSelectedPO);
+        setLastUpdated(new Date().toLocaleString());
+      }
+      fetchPrivateOffices();
+    }
+  }, [tabIndex]);
 
   const isSeatOccupied = (seat, mapType) => {
     const seatKey = `${mapType}-${seat.number}`;
@@ -174,71 +212,150 @@ export default function OccupiedSeatsMap() {
     </Card>
   );
 
+  // Render Private Office List
+  const renderPrivateOffices = () => (
+    <Card variant="outlined" sx={{ ...responsiveMapCardSx, maxWidth: 600, mx: "auto" }}>
+      <CardContent>
+        <Typography variant="h6" align="center" color={purple[800]} gutterBottom fontWeight="bold">
+          Private Office Occupancy
+        </Typography>
+        <Divider sx={{ my: 1 }} />
+        <List dense>
+          {privateOfficeList.length === 0 ? (
+            <ListItem>
+              <ListItemText primary="No private office data found." />
+            </ListItem>
+          ) : (
+            privateOfficeList.map((office, idx) => {
+              const offices = Array.isArray(office.selectedPO)
+                ? office.selectedPO
+                : office.selectedPO
+                ? [office.selectedPO]
+                : [];
+              return (
+                <ListItem key={office.id} sx={{ py: 1 }}>
+                  <MeetingRoomIcon sx={{ color: offices.length ? red[400] : grey[400], mr: 1 }} />
+                  <ListItemText
+                    primary={
+                      <Box>
+                        <Typography component="span" fontWeight="bold">
+                          {office.name || `Office ${idx + 1}`}
+                        </Typography>
+                        {offices.length > 0 && (
+                          <Typography
+                            component="span"
+                            sx={{ color: red[700], fontWeight: 700, ml: 2 }}
+                          >
+                            {offices.join(", ")}
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                    secondary={office.company ? `Tenant: ${office.company}` : null}
+                  />
+                </ListItem>
+              );
+            })
+          )}
+        </List>
+        <Divider sx={{ my: 1 }} />
+        <Typography variant="body2" color="text.secondary">
+          Occupied Offices: <b>{occupiedPrivateOffices.length}</b>
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Last updated: {lastUpdated}
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
       <Typography variant="h5" fontWeight="bold" gutterBottom>
-        Current Seat Occupancy
+        Occupancy Map
       </Typography>
       <Typography variant="body1" color="text.secondary" mb={3}>
-        Real-time view of all occupied seats across workspaces
+        Real-time view of all occupied seats and private offices
       </Typography>
 
-      <Paper variant="outlined" sx={{ p: { xs: 1, sm: 3 }, mb: 3, borderRadius: 2 }}>
-        <Stack direction="row" spacing={2} mb={3} flexWrap="wrap">
-          <Chip 
-            icon={<Box sx={{ width: 14, height: 14, bgcolor: red[400], border: `1px solid ${red[600]}` }} />}
-            label="Occupied seat"
-            size="small"
-          />
-          <Chip 
-            icon={<Box sx={{ width: 14, height: 14, bgcolor: grey[50], border: `1px solid ${grey[300]}` }} />}
-            label="Vacant seat"
-            size="small"
-          />
-        </Stack>
+      <Tabs
+        value={tabIndex}
+        onChange={(_, val) => setTabIndex(val)}
+        sx={{ mb: 3 }}
+        indicatorColor="primary"
+        textColor="primary"
+        variant="fullWidth"
+      >
+        <Tab label="Dedicated Desk" />
+        <Tab label="Private Offices" />
+      </Tabs>
 
-        <Box sx={{ overflowX: "auto", py: 1, width: "100%" }}>
-          <Stack
-            direction="row"
-            spacing={2}
-            sx={{
-              width: "100%",
-              flexWrap: { xs: "wrap", md: "nowrap" },
-              justifyContent: { xs: "center", md: "flex-start" },
-              alignItems: "stretch"
-            }}
-          >
-            {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
-            {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
-            {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
-            {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
-            {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
-          </Stack>
+      {tabIndex === 0 && (
+        <>
+          <Paper variant="outlined" sx={{ p: { xs: 1, sm: 3 }, mb: 3, borderRadius: 2 }}>
+            <Stack direction="row" spacing={2} mb={3} flexWrap="wrap">
+              <Chip 
+                icon={<Box sx={{ width: 14, height: 14, bgcolor: red[400], border: `1px solid ${red[600]}` }} />}
+                label="Occupied seat"
+                size="small"
+              />
+              <Chip 
+                icon={<Box sx={{ width: 14, height: 14, bgcolor: grey[50], border: `1px solid ${grey[300]}` }} />}
+                label="Vacant seat"
+                size="small"
+              />
+            </Stack>
+
+            <Box sx={{ overflowX: "auto", py: 1, width: "100%" }}>
+              <Stack
+                direction="row"
+                spacing={2}
+                sx={{
+                  width: "100%",
+                  flexWrap: { xs: "wrap", md: "nowrap" },
+                  justifyContent: { xs: "center", md: "flex-start" },
+                  alignItems: "stretch"
+                }}
+              >
+                {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
+                {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
+                {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
+                {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
+                {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
+              </Stack>
+            </Box>
+          </Paper>
+
+          <Card sx={{ bgcolor: blue[50], border: `1px solid ${blue[100]}` }}>
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+                <InfoIcon color="primary" />
+                <Typography variant="subtitle1" fontWeight="medium">
+                  Occupancy Summary
+                </Typography>
+              </Stack>
+              <Typography variant="body1">
+                Total seats: <Box component="span" fontWeight="bold">{totalSeats}</Box>
+              </Typography>
+              <Typography variant="body1">
+                Occupied seats: <Box component="span" fontWeight="bold">{occupiedSeats.length}</Box>
+              </Typography>
+              <Typography variant="body1">
+                Available seats: <Box component="span" fontWeight="bold">{remainingSeats}</Box>
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mt={1}>
+                Last updated: {lastUpdated}
+              </Typography>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {tabIndex === 1 && (
+        <Box>
+          {renderPrivateOffices()}
         </Box>
-      </Paper>
-
-      <Card sx={{ bgcolor: blue[50], border: `1px solid ${blue[100]}` }}>
-        <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-            <InfoIcon color="primary" />
-            <Typography variant="subtitle1" fontWeight="medium">
-              Occupancy Summary
-            </Typography>
-          </Stack>
-          <Typography variant="body1">
-            Total seats: <Box component="span" fontWeight="bold">{totalSeats}</Box>
-          </Typography>
-          <Typography variant="body1">
-            Occupied seats: <Box component="span" fontWeight="bold">{occupiedSeats.length}</Box>
-          </Typography>
-          <Typography variant="body1">
-            Available seats: <Box component="span" fontWeight="bold">{remainingSeats}</Box>
-          </Typography>
-          <Typography variant="body2" color="text.secondary" mt={1}>
-            Last updated: {lastUpdated}
-          </Typography>
-        </CardContent>
-      </Card>
+      )}
     </Box>
   );
 }
