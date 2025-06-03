@@ -30,12 +30,6 @@ import { FaChair } from "react-icons/fa";
 import { MdOutlineEventNote } from "react-icons/md";
 
 const COLORS = ["#10b981", "#ef4444", "#6366f1"]; // Green for available, Red for occupied, Purple for others
-const CARD_ICONS = [
-  <FaChair className="h-7 w-7 text-blue-500" />,
-  <HiOutlineUserAdd className="h-7 w-7 text-green-500" />,
-  <HiOutlineUserRemove className="h-7 w-7 text-red-500" />,
-  <MdOutlineEventNote className="h-7 w-7 text-yellow-500" />,
-];
 
 // Calculate total seats from all seat maps
 const totalSeats = seatMap1.length + seatMap2.length + seatMap3.length + seatMap4.length + seatMap5.length;
@@ -47,6 +41,10 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [occupiedSeats, setOccupiedSeats] = useState([]);
   const [availableSeats, setAvailableSeats] = useState(totalSeats);
+
+  // --- New state for private offices ---
+  const [privateOfficeList, setPrivateOfficeList] = useState([]);
+  const [occupiedPrivateOffices, setOccupiedPrivateOffices] = useState([]);
 
   // Fetch seat map data
   useEffect(() => {
@@ -79,6 +77,38 @@ const Dashboard = () => {
       setAvailableSeats(totalSeats - allSelectedSeats.length);
     }
     fetchOccupiedSeats();
+  }, []);
+
+  // --- Fetch private office data and selectedPOs ---
+  useEffect(() => {
+    async function fetchPrivateOffices() {
+      try {
+        const querySnapshot = await getDocs(collection(db, "privateOffice"));
+        const officeDocs = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        setPrivateOfficeList(officeDocs);
+
+        // Gather all selectedPOs (can be array or string)
+        const allSelectedPO = [];
+        officeDocs.forEach(office => {
+          if (office.selectedPO) {
+            if (Array.isArray(office.selectedPO)) {
+              allSelectedPO.push(...office.selectedPO);
+            } else {
+              allSelectedPO.push(office.selectedPO);
+            }
+          }
+        });
+        setOccupiedPrivateOffices(allSelectedPO);
+      } catch (err) {
+        setError("Failed to fetch private office data");
+        console.error(err);
+      }
+    }
+    fetchPrivateOffices();
   }, []);
 
   // Fetch visit map data
@@ -208,6 +238,22 @@ const Dashboard = () => {
             </div>
             <div className="bg-yellow-100 rounded-full p-2 shadow-sm">
               <MdOutlineEventNote className="h-7 w-7 text-yellow-500" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* --- Private Office Occupancy Card --- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-7 mb-10">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-50 via-white to-purple-100 shadow-lg border border-purple-100 p-6 flex flex-col gap-2 transition hover:shadow-xl hover:-translate-y-1 duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-gray-400 text-sm font-semibold uppercase tracking-wider">Private Offices Occupied</h3>
+              <p className="text-3xl font-black text-purple-700 mt-2">{occupiedPrivateOffices.length}</p>
+              <p className="text-sm mt-1 text-purple-800">{occupiedPrivateOffices.join(", ") || "None"}</p>
+            </div>
+            <div className="bg-purple-100 rounded-full p-2 shadow-sm">
+              <span role="img" aria-label="office" className="text-purple-500 text-2xl">🏢</span>
             </div>
           </div>
         </div>
