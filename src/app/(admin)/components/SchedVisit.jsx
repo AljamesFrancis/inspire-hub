@@ -1,6 +1,15 @@
 "use client";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, getDocs } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  where,
+  query,
+  doc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+} from "firebase/firestore";
 import React, { useState, useEffect } from "react";
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -8,6 +17,38 @@ import seatMap2 from "../../(admin)/seatMap2.json";
 import seatMap3 from "../../(admin)/seatMap3.json";
 import seatMap4 from "../../(admin)/seatMap4.json";
 import seatMap5 from "../../(admin)/seatMap5.json";
+import {
+  sendAcceptanceEmail,
+  sendRejectionEmail,
+} from "../../(admin)/utils/email";
+
+// MUI Components
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Divider,
+  Grid,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  Paper,
+  Stack,
+  Typography,
+  Tooltip,
+} from '@mui/material';
+import {
+  Check as CheckIcon,
+  Close as CloseIcon,
+  Event as EventIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  Business as BusinessIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
 
 // Utility functions
 function groupIntoPairs(entries) {
@@ -17,6 +58,7 @@ function groupIntoPairs(entries) {
   }
   return groups;
 }
+
 function groupSeatsByRow(seatMap) {
   return seatMap.reduce((acc, seat) => {
     const row = seat.number[0];
@@ -25,18 +67,32 @@ function groupSeatsByRow(seatMap) {
     return acc;
   }, {});
 }
+
 const groupedSeats1 = groupSeatsByRow(seatMap1);
 const groupedSeats2 = groupSeatsByRow(seatMap2);
 const groupedSeats3 = groupSeatsByRow(seatMap3);
 const groupedSeats4 = groupSeatsByRow(seatMap4);
 const groupedSeats5 = groupSeatsByRow(seatMap5);
 
+const rowEntries1 = Object.entries(groupedSeats1).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries2 = Object.entries(groupedSeats2).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries3 = Object.entries(groupedSeats3).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries4 = Object.entries(groupedSeats4).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries5 = Object.entries(groupedSeats5).sort(([a], [b]) => a.localeCompare(b));
+
+const groupPairs1 = groupIntoPairs(rowEntries1);
+const groupPairs2 = groupIntoPairs(rowEntries2);
+const groupPairs3 = groupIntoPairs(rowEntries3);
+const groupPairs4 = groupIntoPairs(rowEntries4);
+const groupPairs5 = groupIntoPairs(rowEntries5);
+
 export default function ClientsPage() {
-  const [clients, setClients] = useState([]); // All client docs from Firestore
+  const [clients, setClients] = useState([]);
+  const [visitClients, setVisitClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState(null);
 
   useEffect(() => {
-    async function fetchData() {
+    async function fetchOccupiedSeats() {
       const querySnapshot = await getDocs(collection(db, "seatMap"));
       const docs = querySnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -44,228 +100,396 @@ export default function ClientsPage() {
       }));
       setClients(docs);
     }
-    fetchData();
+    fetchOccupiedSeats();
   }, []);
 
-  // Always get the latest client object from clients array
-  const selectedClient = clients.find((c) => c.id === selectedClientId) || null;
+  const fetchVisitData = async () => {
+    const q = query(collection(db, "visitMap"), where("status", "==", "pending"));
+    const querySnapshot = await getDocs(q);
+    const docs = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setVisitClients(docs);
+  };
 
-  // All seats booked by any client (so you can mark them as "booked" and disable them)
-  const allBookedSeats = clients.flatMap((c) => c.selectedSeats || []);
+  useEffect(() => {
+    fetchVisitData();
+  }, []);
 
-  // Seats selected by the selected client (for "selected" blue highlight)
-  const getSelectedSeats = () =>
-    selectedClient && selectedClient.selectedSeats
-      ? selectedClient.selectedSeats
-      : [];
+  const acceptVisit = async (visitId) => {
+    if (!visitId) return;
+    try {
+      const visitRef = doc(db, "visitMap", visitId);
+      const visitDoc = await getDoc(visitRef);
+      const clientData = visitDoc.data();
+
+      await updateDoc(visitRef, { status: "accepted" });
+      const emailResult = await sendAcceptanceEmail(clientData);
+      
+      if (!emailResult.success) {
+        throw emailResult.error;
+      }
+
+      await fetchVisitData();
+      setSelectedClientId(null);
+      alert("Visit accepted and client notified!");
+    } catch (error) {
+      console.error("Error in acceptVisit:", error);
+      alert(error.message || "Visit was accepted but failed to notify client.");
+    }
+  };
+
+  const rejectVisit = async (visitId) => {
+    if (!visitId) return;
+    try {
+      const visitRef = doc(db, "visitMap", visitId);
+      const visitDoc = await getDoc(visitRef);
+      const clientData = visitDoc.data();
+
+      await updateDoc(visitRef, { status: "rejected" });
+      const emailResult = await sendRejectionEmail(clientData);
+      
+      if (!emailResult.success) {
+        throw emailResult.error;
+      }
+
+      await fetchVisitData();
+      setSelectedClientId(null);
+      alert("Visit request rejected and client notified!");
+    } catch (error) {
+      console.error("Error in rejectVisit:", error);
+      alert(error.message || "Failed to reject visit request.");
+    }
+  };
+
+  const selectedVisitClient = visitClients.find((c) => c.id === selectedClientId);
+  const allReservedSeats = selectedVisitClient?.reservedSeats || [];
+  const allSelectedSeats = clients.flatMap((c) => c.selectedSeats || []);
+  const selectedClient = selectedVisitClient || null;
+
+  const isReservedSeat = (seat, mapType) => {
+    const seatKey = `${mapType}-${seat.number}`;
+    return allReservedSeats.includes(seatKey);
+  };
 
   const isSelectedSeat = (seat, mapType) => {
     const seatKey = `${mapType}-${seat.number}`;
-    return getSelectedSeats().includes(seatKey);
+    return allSelectedSeats.includes(seatKey);
+  };
+
+  // Responsive seat width (stretches/shrinks with screen)
+  const responsiveSeatBoxSx = {
+    minWidth: { xs: 28, sm: 36, md: 40 },
+    width: { xs: "8vw", sm: "4vw", md: "40px" },
+    maxWidth: { xs: 40, sm: 44, md: 50 },
+    height: { xs: 20, sm: 22, md: 24 },
+    p: 0,
+    fontSize: { xs: '0.55rem', sm: '0.6rem' },
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 0.5,
+    transition: "all .15s"
+  };
+
+  // Map card stretches responsively
+  const responsiveMapCardSx = {
+    flexGrow: 1,
+    minWidth: { xs: 250, sm: 320, md: 360 },
+    maxWidth: { xs: "90vw", md: 420 },
+    flexBasis: { xs: "90vw", sm: "auto" },
+    flexShrink: 1,
+    width: "100%",
+    m: 0,
+    overflowX: "auto"
   };
 
   const renderSeatMap = (groupPairs, mapType, title) => (
-    <div className="flex-1 min-w-[180px]">
-      <h3 className="text-xs sm:text-sm font-semibold mb-3 text-center">
-        {title}
-      </h3>
-      <div className="space-y-4 sm:space-y-6">
-        {groupPairs.map((group, i) => (
-          <div key={i} className="flex flex-col items-start space-y-1">
-            {group.map(([rowLabel, seats]) => (
-              <div key={rowLabel}>
-                <p className="font-semibold mb-1 text-xs">{rowLabel} Row</p>
-                <div className="flex">
-                  {seats.map((seat) => {
-                    const seatKey = `${mapType}-${seat.number}`;
-                    const isBooked = allBookedSeats.includes(seatKey);
-                    const isSelected = isSelectedSeat(seat, mapType);
-                    return (
-                      <div
-                        key={seat.id}
-                        className={`relative ${
-                          seat.type === "window"
-                            ? "mr-2 sm:mr-3"
-                            : "mr-1"
-                        }`}
-                      >
-                        <button
-                          disabled={isBooked}
-                          className={`h-5 w-8 sm:h-6 sm:w-10 border-0 flex flex-col items-center justify-center transition ${
-                            isBooked
-                              ? "bg-red-300 cursor-not-allowed text-white"
-                              : isSelected
-                              ? "bg-blue-500 text-white"
-                              : seat.type === "window"
-                              ? "bg-gray-100 hover:bg-gray-200 text-gray-800"
-                              : "bg-gray-50 hover:bg-gray-100 text-gray-800"
-                          }`}
-                          title={`Seat ${seat.number} (${seat.type}) - ${title}`}
-                        >
-                          <Monitor size={8} className="mb-0.5" />
-                          <span className="text-[8px] sm:text-[10px]">
-                            {seat.number}
-                          </span>
-                        </button>
-                        <div
-                          className={`absolute top-0 left-0 w-full h-[2px] ${
-                            isBooked
-                              ? "bg-red-400"
-                              : isSelected
-                              ? "bg-blue-600"
-                              : seat.type === "window"
-                              ? "bg-gray-400"
-                              : "bg-gray-300"
-                          }`}
-                        ></div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            {i < groupPairs.length - 1 && (
-              <div className="my-2 sm:my-3 w-full border-b border-dashed border-gray-300"></div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+    <Card variant="outlined" sx={responsiveMapCardSx}>
+      <CardContent>
+        <Typography variant="subtitle2" align="center" gutterBottom>
+          {title}
+        </Typography>
+        <Stack spacing={2}>
+          {groupPairs.map((group, i) => (
+            <Box key={i}>
+              {group.map(([rowLabel, seats]) => (
+                <Box key={rowLabel} mb={1} sx={{ width: "100%" }}>
+                  <Typography variant="caption" fontWeight="medium">
+                    {rowLabel} Row
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} mt={0.5} sx={{ width: "100%" }}>
+                    {seats.map((seat) => {
+                      const seatKey = `${mapType}-${seat.number}`;
+                      const reserved = isReservedSeat(seat, mapType);
+                      const selected = isSelectedSeat(seat, mapType);
 
-  const rowEntries1 = Object.entries(groupedSeats1).sort(([a], [b]) =>
-    a.localeCompare(b)
-  );
-  const rowEntries2 = Object.entries(groupedSeats2).sort(([a], [b]) =>
-    a.localeCompare(b)
-  );
-  const rowEntries3 = Object.entries(groupedSeats3).sort(([a], [b]) =>
-    a.localeCompare(b)
-  );
-  const rowEntries4 = Object.entries(groupedSeats4).sort(([a], [b]) =>
-    a.localeCompare(b)
-  );
-  const rowEntries5 = Object.entries(groupedSeats5).sort(([a], [b]) =>
-    a.localeCompare(b)
-  );
+                      let seatColor = reserved ? 'primary.main' : 
+                                     selected ? 'error.light' : 
+                                     seat.type === "window" ? 'grey.100' : 'grey.50';
+                      
+                      let barColor = reserved ? 'primary.dark' : 
+                                    selected ? 'error.main' : 
+                                    seat.type === "window" ? 'grey.400' : 'grey.300';
 
-  const groupPairs1 = groupIntoPairs(rowEntries1);
-  const groupPairs2 = groupIntoPairs(rowEntries2);
-  const groupPairs3 = groupIntoPairs(rowEntries3);
-  const groupPairs4 = groupIntoPairs(rowEntries4);
-  const groupPairs5 = groupIntoPairs(rowEntries5);
+                      const hoverTitle = reserved ? "This seat is scheduled for a visit" : 
+                                       selected ? "This seat is currently occupied" : 
+                                       seat.type === "window" ? "Window seat (vacant)" : "Vacant seat";
+
+                      return (
+                        <Tooltip key={seat.id} title={hoverTitle} arrow>
+                          <Box position="relative" mr={seat.type === "window" ? 1 : 0.5}>
+                            <Button
+                              disabled={reserved || selected}
+                              variant="contained"
+                              sx={{
+                                ...responsiveSeatBoxSx,
+                                bgcolor: seatColor,
+                                color: reserved || selected ? 'common.white' : 'text.primary',
+                                '&:hover': {
+                                  bgcolor: reserved ? 'primary.dark' : 
+                                           selected ? 'error.main' : 
+                                           seat.type === "window" ? 'grey.200' : 'grey.100',
+                                },
+                                '&.Mui-disabled': {
+                                  bgcolor: seatColor,
+                                  color: reserved || selected ? 'common.white' : 'text.primary',
+                                }
+                              }}
+                            >
+                              <Monitor size={10} style={{ marginBottom: 2 }} />
+                              <Typography variant="caption" ml={0.5} fontSize="0.6rem">
+                                {seat.number}
+                              </Typography>
+                            </Button>
+                            <Box
+                              position="absolute"
+                              top={0}
+                              left={0}
+                              width="100%"
+                              height={2}
+                              bgcolor={barColor}
+                            />
+                          </Box>
+                        </Tooltip>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              ))}
+              {i < groupPairs.length - 1 && <Divider sx={{ my: 1 }} />}
+            </Box>
+          ))}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-gray-100">
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'grey.50' }}>
       {/* Sidebar */}
-      <div className="w-full md:w-64 bg-white shadow-md overflow-y-auto">
-        <div className="p-4 border-b border-gray-200">
-          <h2 className="text-l font-semibold">Clients Request For Visit</h2>
-        </div>
-        <div className="divide-y divide-gray-200">
-          {clients.map((client) => (
-            <div
-              key={client.id}
-              className={`p-4 cursor-pointer hover:bg-blue-50 ${
-                selectedClientId === client.id ? "bg-blue-100" : ""
-              }`}
-              onClick={() => setSelectedClientId(client.id)}
+      <Paper sx={{ width: 280, flexShrink: 0, overflow: 'auto', boxShadow: 2 }}>
+        <Box p={2} borderBottom={1} borderColor="divider">
+          <Typography  fontWeight="medium">
+            Visit Requests
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {visitClients.length} pending requests
+          </Typography>
+        </Box>
+        <List disablePadding>
+          {visitClients.map((client) => (
+            <ListItem 
+              key={client.id} 
+              disablePadding
+              sx={{
+                bgcolor: selectedClientId === client.id ? 'primary.light' : 'transparent',
+                '&:hover': {
+                  bgcolor: selectedClientId === client.id ? 'primary.light' : 'action.hover'
+                }
+              }}
             >
-              <h3 className="font-medium">{client.name}</h3>
-              <p className="text-sm text-gray-600">{client.company}</p>
-            </div>
+              <ListItemButton onClick={() => setSelectedClientId(client.id)}>
+                <ListItemText
+                  primary={
+                    <Typography fontWeight="medium" noWrap>
+                      {client.name}
+                    </Typography>
+                  }
+                  secondary={
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      {client.company}
+                    </Typography>
+                  }
+                />
+                {client.reservedSeats?.length > 0 && (
+                  <Chip 
+                    label={`${client.reservedSeats.length} seats`} 
+                    size="small" 
+                    sx={{ ml: 1 }}
+                  />
+                )}
+              </ListItemButton>
+            </ListItem>
           ))}
-        </div>
-      </div>
+        </List>
+      </Paper>
+
       {/* Main Content */}
-      <div className="flex-1 p-4 overflow-x-hidden">
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          {selectedClient ? (
-            <div className="p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 sm:mb-6 gap-4">
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold">
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1, sm: 2, md: 3 } }}>
+        {selectedClient ? (
+          <Card sx={{ width: '100%' }}>
+            <CardContent>
+              {/* Header with actions */}
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  flexDirection: { xs: 'column', sm: 'row' }, 
+                  justifyContent: 'space-between',
+                  alignItems: { xs: 'flex-start', sm: 'center' },
+                  mb: 3,
+                  gap: 2
+                }}
+              >
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" gutterBottom>
                     {selectedClient.name}
-                  </h1>
-                  <p className="text-gray-600 text-sm sm:text-base">
-                    {selectedClient.company}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button className="px-3 py-1 sm:px-4 sm:py-2 bg-green-400 text-white rounded hover:bg-green-500 text-sm sm:text-base">
-                    Accept
-                  </button>
-                  <button className="px-3 py-1 sm:px-4 sm:py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm sm:text-base">
+                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <BusinessIcon fontSize="small" color="action" />
+                    <Typography variant="body1" color="text.secondary">
+                      {selectedClient.company}
+                    </Typography>
+                  </Stack>
+                </Box>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    startIcon={<CheckIcon />}
+                    onClick={() => acceptVisit(selectedClient.id)}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Accept Visit
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<CloseIcon />}
+                    onClick={() => rejectVisit(selectedClient.id)}
+                    sx={{ textTransform: 'none' }}
+                  >
                     Reject
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                <div>
-                  <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">
+                  </Button>
+                </Stack>
+              </Box>
+
+              {/* Client details */}
+              <Grid container spacing={3} mb={3}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
                     Contact Information
-                  </h2>
-                  <p className="text-sm sm:text-base">
-                    <strong>Email:</strong> {selectedClient.email}
-                  </p>
-                  <p className="text-sm sm:text-base">
-                    <strong>Phone:</strong> {selectedClient.phone}
-                  </p>
-                  <p className="text-sm sm:text-base">
-                    <strong>Seat Preference:</strong> {selectedClient.seatPreference}
-                  </p>
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">
-                    Client Details
-                  </h2>
-                  <p className="text-gray-700 text-sm sm:text-base">
+                  </Typography>
+                  <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <EmailIcon fontSize="small" color="action" />
+                      <Typography variant="body1">
+                        {selectedClient.email}
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <PhoneIcon fontSize="small" color="action" />
+                      <Typography variant="body1">
+                        {selectedClient.phone}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
+                    Visit Details
+                  </Typography>
+                  <Typography variant="body1" paragraph>
                     {selectedClient.details}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-6 sm:mt-8">
-                <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">
-                  Dedicated Desk
-                </h2>
-                <div className="bg-gray-50 p-3 sm:p-4 rounded-lg overflow-x-auto">
-                  <div className="flex flex-wrap gap-2 mb-3 sm:mb-4">
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-50 border border-gray-300"></div>
-                      <span className="text-xs sm:text-sm">Regular Seat</span>
-                    </div>
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-100 border border-gray-400"></div>
-                      <span className="text-xs sm:text-sm">Window Seat</span>
-                    </div>
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 bg-red-300"></div>
-                      <span className="text-xs sm:text-sm">Booked Seat</span>
-                    </div>
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 bg-blue-500"></div>
-                      <span className="text-xs sm:text-sm">Selected Seat</span>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto pb-2">
-                    <div className="flex flex-nowrap gap-2 sm:gap-4 justify-start min-w-max">
+                  </Typography>
+                  <Stack spacing={1}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <EventIcon fontSize="small" color="action" />
+                      <Typography variant="body2">
+                        {selectedClient.date
+                          ? selectedClient.date.seconds
+                            ? new Date(selectedClient.date.seconds * 1000).toLocaleString()
+                            : selectedClient.date.toLocaleString()
+                          : "Not specified"}
+                      </Typography>
+                    </Stack>
+                    {selectedClient.reservedSeats?.length > 0 && (
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <InfoIcon fontSize="small" color="action" />
+                        <Typography variant="body2">
+                          Reserved seats: {selectedClient.reservedSeats.join(", ")}
+                        </Typography>
+                      </Stack>
+                    )}
+                  </Stack>
+                </Grid>
+              </Grid>
+
+              {/* Seat maps */}
+              <Box>
+                <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
+                  Seat Assignment
+                </Typography>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Stack direction="row" spacing={2} mb={2} flexWrap="wrap">
+                    <Chip 
+                      icon={<Box sx={{ width: 14, height: 14, bgcolor: 'primary.main' }} />}
+                      label="Scheduled for visit"
+                      size="small"
+                    />
+                    <Chip 
+                      icon={<Box sx={{ width: 14, height: 14, bgcolor: 'error.light' }} />}
+                      label="Occupied seat"
+                      size="small"
+                    />
+                    <Chip 
+                      icon={<Box sx={{ width: 14, height: 14, bgcolor: 'grey.100', border: 1, borderColor: 'grey.300' }} />}
+                      label="Vacant seat"
+                      size="small"
+                    />
+                  </Stack>
+                  <Box sx={{ overflowX: "auto", py: 1, width: "100%" }}>
+                    <Stack
+                      direction="row"
+                      spacing={2}
+                      sx={{
+                        width: "100%",
+                        flexWrap: { xs: "wrap", md: "nowrap" },
+                        justifyContent: { xs: "center", md: "flex-start" },
+                        alignItems: "stretch"
+                      }}
+                    >
                       {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
                       {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
                       {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
                       {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
                       {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="p-6 text-center text-gray-500">
-              Select a client to view details and seat assignment
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+                    </Stack>
+                  </Box>
+                </Paper>
+              </Box>
+            </CardContent>
+          </Card>
+        ) : (
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
+            <Typography variant="body1" color="text.secondary">
+              Select a client from the sidebar to view details
+            </Typography>
+          </Paper>
+        )}
+      </Box>
+    </Box>
   );
 }

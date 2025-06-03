@@ -1,169 +1,338 @@
-import React, { useState } from "react";
+"use client";
+import { db } from "../../../../script/firebaseConfig";
+import { collection, getDocs } from "firebase/firestore";
+import React, { useState, useEffect } from "react";
+import { Monitor } from "lucide-react";
+import seatMap1 from "../../(admin)/seatMap1.json";
+import seatMap2 from "../../(admin)/seatMap2.json";
+import seatMap3 from "../../(admin)/seatMap3.json";
+import seatMap4 from "../../(admin)/seatMap4.json";
+import seatMap5 from "../../(admin)/seatMap5.json";
+import AddTenantModal from "./AddTenantsProps";
 
-export default function TenantManagement() {
-  const [tenants, setTenants] = useState([
-    {
-      id: 1,
-      name: "John Doe",
-      email: "john@example.com",
-      phone: "09171234567",
-      unit: "Unit 101",
-    },
-    {
-      id: 2,
-      name: "Jane Smith",
-      email: "jane@example.com",
-      phone: "09281234567",
-      unit: "Unit 202",
-    },
-  ]);
+// MUI Imports
+import {
+  Box,
+  Button,
+  Typography,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Chip,
+  Stack,
+  Divider,
+  Card,
+  CardContent,
+} from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
+import AddIcon from "@mui/icons-material/Add";
+import { blue, green, grey, red } from "@mui/material/colors";
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [newTenant, setNewTenant] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    unit: "",
-  });
+// Utility functions
+function groupIntoPairs(entries) {
+  const groups = [];
+  for (let i = 0; i < entries.length; i += 2) {
+    groups.push(entries.slice(i, i + 2));
+  }
+  return groups;
+}
 
-  const handleInputChange = (e) => {
-    setNewTenant({ ...newTenant, [e.target.name]: e.target.value });
+function groupSeatsByRow(seatMap) {
+  return seatMap.reduce((acc, seat) => {
+    const row = seat.number[0];
+    if (!acc[row]) acc[row] = [];
+    acc[row].push(seat);
+    return acc;
+  }, {});
+}
+
+const groupedSeats1 = groupSeatsByRow(seatMap1);
+const groupedSeats2 = groupSeatsByRow(seatMap2);
+const groupedSeats3 = groupSeatsByRow(seatMap3);
+const groupedSeats4 = groupSeatsByRow(seatMap4);
+const groupedSeats5 = groupSeatsByRow(seatMap5);
+
+const rowEntries1 = Object.entries(groupedSeats1).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries2 = Object.entries(groupedSeats2).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries3 = Object.entries(groupedSeats3).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries4 = Object.entries(groupedSeats4).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries5 = Object.entries(groupedSeats5).sort(([a], [b]) => a.localeCompare(b));
+
+const groupPairs1 = groupIntoPairs(rowEntries1);
+const groupPairs2 = groupIntoPairs(rowEntries2);
+const groupPairs3 = groupIntoPairs(rowEntries3);
+const groupPairs4 = groupIntoPairs(rowEntries4);
+const groupPairs5 = groupIntoPairs(rowEntries5);
+
+export default function SeatMapTable() {
+  const [clients, setClients] = useState([]);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // Fetch seatMap collection
+  useEffect(() => {
+    async function fetchData() {
+      const querySnapshot = await getDocs(collection(db, "seatMap"));
+      const docs = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setClients(docs);
+    }
+    fetchData();
+  }, []);
+
+  const refreshClients = async () => {
+    const querySnapshot = await getDocs(collection(db, "seatMap"));
+    const docs = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setClients(docs);
   };
 
-  const handleAddTenant = () => {
-    const id = tenants.length + 1;
-    setTenants([...tenants, { id, ...newTenant }]);
-    setNewTenant({ name: "", email: "", phone: "", unit: "" });
-    setModalOpen(false);
-  };
+  // Rendering seat map modal (as card grid, like your preferred MUI map)
+  const renderSeatMap = (groupPairs, mapType, title) => (
+    <Card variant="outlined" sx={{ minWidth: 200, flexShrink: 0 }}>
+      <CardContent>
+        <Typography variant="subtitle2" align="center" gutterBottom fontWeight="medium">
+          {title}
+        </Typography>
+        <Stack spacing={2}>
+          {groupPairs.map((group, i) => (
+            <Box key={i}>
+              {group.map(([rowLabel, seats]) => (
+                <Box key={rowLabel} mb={1}>
+                  <Typography variant="caption" fontWeight="medium">
+                    {rowLabel} Row
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} mt={0.5}>
+                    {seats.map((seat) => {
+                      const seatKey = `${mapType}-${seat.number}`;
+                      const isSelected = selectedClient?.selectedSeats?.includes(seatKey);
+                      const isWindow = seat.type === "window";
+
+                      let seatBg = grey[100];
+                      let seatColor = grey[800];
+                      let barColor = grey[300];
+
+                      if (isSelected) {
+                        seatBg = green[400];
+                        seatColor = "#fff";
+                        barColor = red[600];
+                      } else if (isWindow) {
+                        seatBg = grey[200];
+                        seatColor = grey[900];
+                        barColor = grey[400];
+                      } else {
+                        seatBg = grey[50];
+                        seatColor = grey[800];
+                        barColor = grey[300];
+                      }
+
+                      return (
+                        <Box key={seat.id} position="relative" mr={isWindow ? 1 : 0.5}>
+                          <Box
+                            sx={{
+                              minWidth: 40,
+                              height: 24,
+                              p: 0,
+                              bgcolor: seatBg,
+                              color: seatColor,
+                              fontSize: '0.6rem',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              border: `1px solid ${barColor}`,
+                              borderRadius: 0.5,
+                            }}
+                          >
+                            <Monitor size={10} style={{ marginBottom: 2 }} />
+                            <span>{seat.number}</span>
+                          </Box>
+                          <Box
+                            position="absolute"
+                            top={0}
+                            left={0}
+                            width="100%"
+                            height={2}
+                            bgcolor={barColor}
+                          />
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              ))}
+              {i < groupPairs.length - 1 && <Divider sx={{ my: 1 }} />}
+            </Box>
+          ))}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Tenant Management</h1>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+    <Box p={3}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={4}>
+        <Typography variant="h4" fontWeight={700}>
+          Tenants
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setShowAddModal(true)}
+          sx={{ bgcolor: blue[600], "&:hover": { bgcolor: blue[700] } }}
         >
           Add Tenant
-        </button>
-      </div>
-
-     {/* Table */}
-        <div className="overflow-x-auto bg-white rounded-lg shadow">
-        <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-100">
-            <tr>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">Name</th>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">Email</th>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">Phone</th>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">Unit</th>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-gray-600">Action</th>
-            </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-            {tenants.map((tenant) => (
-                <tr key={tenant.id}>
-                <td className="px-4 py-2">{tenant.name}</td>
-                <td className="px-4 py-2">{tenant.email}</td>
-                <td className="px-4 py-2">{tenant.phone}</td>
-                <td className="px-4 py-2">{tenant.unit}</td>
-                <td className="px-4 py-2">
-                    <button
-                    onClick={() => handleViewTenant(tenant)}
-                    className="px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600 transition"
+        </Button>
+      </Stack>
+      <Paper elevation={2}>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: grey[100] }}>
+                <TableCell>
+                  <Typography variant="caption" fontWeight={600}>
+                    Client Name
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="caption" fontWeight={600}>
+                    Company
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="caption" fontWeight={600}>
+                    Selected Seats
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="caption" fontWeight={600}>
+                    Actions
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {clients.map((client) => (
+                <TableRow key={client.id} hover>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={500}>{client.name}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">{client.company}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {client.selectedSeats && client.selectedSeats.length > 0
+                        ? `${client.selectedSeats.length} seat${client.selectedSeats.length > 1 ? "s" : ""}`
+                        : "0"}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="text"
+                      sx={{ color: blue[700], fontWeight: 600 }}
+                      onClick={() => {
+                        setSelectedClient(client);
+                        setShowModal(true);
+                      }}
                     >
-                    View
-                    </button>
-                </td>
-                </tr>
-            ))}
-            </tbody>
-        </table>
-        </div>
+                      View Map
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
+      {/* View Seat Map Modal */}
+      <Dialog
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        maxWidth="xl"
+        fullWidth
+        PaperProps={{
+          sx: { maxHeight: '90vh' }
+        }}
+      >
+        <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+          <Box>
+            <Typography variant="h6" fontWeight={700}>
+              {selectedClient?.name}&apos;s Seat Map
+            </Typography>
+            <Typography variant="subtitle2" color="text.secondary">
+              {selectedClient?.company}
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setShowModal(false)}
+            aria-label="close"
+            size="large"
+            sx={{ ml: 2 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box mb={2}>
+            <Typography fontWeight={600} gutterBottom>
+              Selected Seats:
+            </Typography>
+            <Typography color="text.secondary">
+              {selectedClient?.selectedSeats && selectedClient.selectedSeats.length > 0
+                ? `${selectedClient.selectedSeats.length} seat${selectedClient.selectedSeats.length > 1 ? "s" : ""}`
+                : "0"}
+            </Typography>
+          </Box>
+          <Box bgcolor={grey[50]} p={2} borderRadius={2}>
+            <Box
+              sx={{
+                overflowX: "auto",
+                width: "100%",
+                minWidth: "max-content",
+                pb: 1
+              }}
+            >
+              <Stack direction="row" spacing={2} minWidth="max-content">
+                {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
+                {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
+                {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
+                {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
+                {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
+              </Stack>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowModal(false)} color="primary" variant="outlined">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* Modal */}
-        {modalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-
-            <div className="bg-white w-full max-w-3xl rounded-lg shadow-lg p-6 relative">
-            <h2 className="text-xl font-semibold mb-4">Add Tenant</h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Left: Form */}
-                <div>
-                <div className="mb-4">
-                    <label className="block text-sm font-medium">Name</label>
-                    <input
-                    type="text"
-                    name="name"
-                    value={newTenant.name}
-                    onChange={handleInputChange}
-                    className="w-full mt-1 px-3 py-2 border rounded"
-                    placeholder="Tenant name"
-                    />
-                </div>
-                <div className="mb-4">
-                    <label className="block text-sm font-medium">Email</label>
-                    <input
-                    type="email"
-                    name="email"
-                    value={newTenant.email}
-                    onChange={handleInputChange}
-                    className="w-full mt-1 px-3 py-2 border rounded"
-                    placeholder="Email address"
-                    />
-                </div>
-                <div className="mb-4">
-                    <label className="block text-sm font-medium">Phone</label>
-                    <input
-                    type="text"
-                    name="phone"
-                    value={newTenant.phone}
-                    onChange={handleInputChange}
-                    className="w-full mt-1 px-3 py-2 border rounded"
-                    placeholder="Phone number"
-                    />
-                </div>
-                <div className="mb-4">
-                    <label className="block text-sm font-medium">Unit</label>
-                    <input
-                    type="text"
-                    name="unit"
-                    value={newTenant.unit}
-                    onChange={handleInputChange}
-                    className="w-full mt-1 px-3 py-2 border rounded"
-                    placeholder="e.g. Unit 305"
-                    />
-                </div>
-                </div>
-
-                {/* Right: Selected Set / Preview */}
-                <div className="bg-gray-50 p-4 rounded border h-full">
-                <h3 className="text-lg font-semibold mb-4">Select Seats</h3>
-                
-                </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-6">
-                <button
-                onClick={() => setModalOpen(false)}
-                className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-                >
-                Cancel
-                </button>
-                <button
-                onClick={handleAddTenant}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                Add Tenant
-                </button>
-            </div>
-            </div>
-        </div>
-        )}
-
-    </div>
+      {/* Add Tenant Modal */}
+      {showAddModal && (
+        <AddTenantModal 
+          showAddModal={showAddModal}
+          setShowAddModal={setShowAddModal}
+          refreshClients={refreshClients}
+        />
+      )}
+    </Box>
   );
 }
