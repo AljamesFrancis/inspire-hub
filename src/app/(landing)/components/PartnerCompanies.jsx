@@ -12,7 +12,6 @@ const images = [
   "/images/iprosperity.png",
   "/images/megaworld.png",
   "/images/robinsons.png",
-  "/images/servecorp.png",
   "/images/shang.png",
   "/images/smdc.png",
   "/images/spire.png",
