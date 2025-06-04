@@ -1,6 +1,6 @@
 "use client";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, getDocs, doc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, doc, deleteDoc, updateDoc } from "firebase/firestore";
 import React, { useState, useEffect } from "react";
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -10,6 +10,9 @@ import seatMap4 from "../../(admin)/seatMap4.json";
 import seatMap5 from "../../(admin)/seatMap5.json";
 import AddTenantModal from "./AddTenantsProps";
 import AddtenantPO from "./AddTenantPO";
+import TenantDetailsModal from "./TenantDetailsModal";
+import ExtensionBillingModal from "./ExtensionBillingModal";
+import AddTenantVirtual from "./AddTenantVirtual";
 import {
   Box,
   Button,
@@ -41,6 +44,7 @@ import {
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import { blue, green, grey, red, purple } from "@mui/material/colors";
+import { sendSubscriptionExpiryNotification } from "../../(admin)/utils/email"; // Make sure this is the correct import
 
 // Utility functions
 function groupIntoPairs(entries) {
@@ -79,6 +83,7 @@ const ITEMS_PER_PAGE = 8;
 export default function SeatMapTable() {
   const [clients, setClients] = useState([]);
   const [privateOfficeClients, setPrivateOfficeClients] = useState([]);
+  const [virtualOfficeClients, setVirtualOfficeClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -88,13 +93,108 @@ export default function SeatMapTable() {
   const [tabIndex, setTabIndex] = useState(0);
   const [page, setPage] = useState([1, 1, 1]);
   const [isPrivateTabLoaded, setIsPrivateTabLoaded] = useState(false);
+  const [isVirtualTabLoaded, setIsVirtualTabLoaded] = useState(false);
+  const [extensionModalOpen, setExtensionModalOpen] = useState(false);
+  const [clientToExtend, setClientToExtend] = useState(null);
+  const [showVirtualOfficeModal, setShowVirtualOfficeModal] = useState(false);
 
-  // For "Deactivate" (which deletes) confirmation dialog
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     client: null,
     isPrivate: false,
   });
+
+  // --- EMAIL NOTIFICATION HOOKS ---
+  // Dedicated Desk
+  useEffect(() => {
+    if (!clients || clients.length === 0) return;
+
+    clients.forEach(async (client) => {
+      if (!client.billing?.billingEndDate || !client.email) return;
+
+      const now = new Date();
+      const end = new Date(client.billing.billingEndDate);
+      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+
+      if (daysLeft === 30 && !client.billing?.notified30days) {
+        try {
+          await sendSubscriptionExpiryNotification({
+            ...client,
+            expiry_date: end.toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }),
+          });
+          const clientRef = doc(db, "seatMap", client.id);
+          await updateDoc(clientRef, { "billing.notified30days": true });
+        } catch (err) {
+          console.error("Failed to send notification to", client.email, err);
+        }
+      }
+    });
+  }, [clients]);
+
+  // Private Office
+  useEffect(() => {
+    if (!privateOfficeClients || privateOfficeClients.length === 0) return;
+
+    privateOfficeClients.forEach(async (client) => {
+      if (!client.billing?.billingEndDate || !client.email) return;
+
+      const now = new Date();
+      const end = new Date(client.billing.billingEndDate);
+      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+
+      if (daysLeft === 30 && !client.billing?.notified30days) {
+        try {
+          await sendSubscriptionExpiryNotification({
+            ...client,
+            expiry_date: end.toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }),
+          });
+          const clientRef = doc(db, "privateOffice", client.id);
+          await updateDoc(clientRef, { "billing.notified30days": true });
+        } catch (err) {
+          console.error("Failed to send notification to", client.email, err);
+        }
+      }
+    });
+  }, [privateOfficeClients]);
+
+  // Virtual Office
+  useEffect(() => {
+    if (!virtualOfficeClients || virtualOfficeClients.length === 0) return;
+
+    virtualOfficeClients.forEach(async (client) => {
+      if (!client.billing?.billingEndDate || !client.email) return;
+
+      const now = new Date();
+      const end = new Date(client.billing.billingEndDate);
+      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+
+      if (daysLeft === 30 && !client.billing?.notified30days) {
+        try {
+          await sendSubscriptionExpiryNotification({
+            ...client,
+            expiry_date: end.toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }),
+          });
+          const clientRef = doc(db, "virtualOffice", client.id);
+          await updateDoc(clientRef, { "billing.notified30days": true });
+        } catch (err) {
+          console.error("Failed to send notification to", client.email, err);
+        }
+      }
+    });
+  }, [virtualOfficeClients]);
+  // --- END EMAIL NOTIFICATION HOOKS ---
 
   useEffect(() => {
     async function fetchData() {
@@ -123,6 +223,21 @@ export default function SeatMapTable() {
     }
   }, [tabIndex, isPrivateTabLoaded]);
 
+  useEffect(() => {
+    async function fetchVirtualOfficeData() {
+      const querySnapshot = await getDocs(collection(db, "virtualOffice"));
+      const docs = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setVirtualOfficeClients(docs);
+      setIsVirtualTabLoaded(true);
+    }
+    if (tabIndex === 2 && !isVirtualTabLoaded) {
+      fetchVirtualOfficeData();
+    }
+  }, [tabIndex, isVirtualTabLoaded]);
+
   const refreshClients = async () => {
     const querySnapshot = await getDocs(collection(db, "seatMap"));
     const docs = querySnapshot.docs.map((doc) => ({
@@ -140,6 +255,22 @@ export default function SeatMapTable() {
       setPrivateOfficeClients(privateDocs);
       setIsPrivateTabLoaded(true);
     }
+
+    if (tabIndex === 2) {
+      const virtualSnapshot = await getDocs(collection(db, "virtualOffice"));
+      const virtualDocs = virtualSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setVirtualOfficeClients(virtualDocs);
+      setIsVirtualTabLoaded(true);
+    }
+  };
+
+  const handleOpenExtensionModal = (client) => {
+    setClientToExtend(client);
+    setExtensionModalOpen(true);
+    setShowTenantDetails(false);
   };
 
   const dedicatedDeskClients = clients.filter(
@@ -154,18 +285,14 @@ export default function SeatMapTable() {
   const privateOfficeActiveClients = privateOfficeClients.filter(
     (client) => client.active !== false
   );
-  const virtualOfficeClients = clients.filter(
-    (client) =>
-      (client.type === "virtual" ||
-        client.officeType === "virtual office" ||
-        (client.selectedSeats && client.selectedSeats.length === 0)) &&
-      client.active !== false
+  const virtualTabClients = virtualOfficeClients.filter(
+    (client) => client.active !== false
   );
 
   const tabClientSets = [
     dedicatedDeskClients,
     privateOfficeActiveClients,
-    virtualOfficeClients,
+    virtualTabClients,
   ];
 
   const totalPages = tabClientSets.map((set) => Math.ceil(set.length / ITEMS_PER_PAGE));
@@ -232,122 +359,6 @@ export default function SeatMapTable() {
     </Card>
   );
 
-  const renderTenantDetails = () => (
-    <Dialog
-      open={showTenantDetails}
-      onClose={() => setShowTenantDetails(false)}
-      maxWidth="sm"
-      fullWidth
-    >
-      <DialogTitle
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "start",
-          pb: 0,
-        }}
-      >
-        <Box>
-          <Typography variant="h6" fontWeight={700}>
-            Tenant Details
-          </Typography>
-          <Typography variant="subtitle2" color="text.secondary">
-            {tenantDetailsClient?.company}
-          </Typography>
-        </Box>
-        <IconButton onClick={() => setShowTenantDetails(false)} aria-label="close" size="large">
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={4}>
-          <Box>
-            <Typography variant="subtitle1" fontWeight={600} mb={2}>
-              Client Information
-            </Typography>
-            <Grid container spacing={2}>
-              {[
-                { label: "Name", value: tenantDetailsClient?.name },
-                { label: "Company", value: tenantDetailsClient?.company },
-                { label: "Email", value: tenantDetailsClient?.email },
-                { label: "Phone", value: tenantDetailsClient?.phone },
-                { label: "Address", value: tenantDetailsClient?.address },
-                {
-                  label: "Selected Seats",
-                  value:
-                    tenantDetailsClient?.selectedSeats?.length > 0
-                      ? tenantDetailsClient.selectedSeats.join(", ")
-                      : "None",
-                },
-              ].map(({ label, value }) => (
-                <Grid item xs={6} key={label}>
-                  <Typography variant="caption" color="text.secondary">
-                    {label}
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {value || "N/A"}
-                  </Typography>
-                </Grid>
-              ))}
-            </Grid>
-          </Box>
-          <Divider />
-          <Box>
-            <Typography variant="subtitle1" fontWeight={600} mb={2}>
-              Billing Details
-            </Typography>
-            <Grid container spacing={2}>
-              {[
-                { label: "Plan", value: tenantDetailsClient?.billing?.plan },
-                {
-                  label: "Rate",
-                  value:
-                    tenantDetailsClient?.billing?.rate !== undefined
-                      ? `${tenantDetailsClient.billing.rate} ${tenantDetailsClient.billing.currency || ""}`
-                      : null,
-                },
-                { label: "Currency", value: tenantDetailsClient?.billing?.currency },
-                { label: "Payment Method", value: tenantDetailsClient?.billing?.paymentMethod },
-                { label: "Start Date", value: tenantDetailsClient?.billing?.startDate },
-                { label: "Billing End Date", value: tenantDetailsClient?.billing?.billingEndDate },
-                { label: "Billing Address", value: tenantDetailsClient?.billing?.billingAddress },
-                {
-                  label: "Months to Avail",
-                  value:
-                    tenantDetailsClient?.billing?.monthsToAvail !== undefined
-                      ? tenantDetailsClient.billing.monthsToAvail
-                      : null,
-                },
-                {
-                  label: "Total",
-                  value:
-                    tenantDetailsClient?.billing?.total !== undefined
-                      ? `${tenantDetailsClient.billing.total} ${tenantDetailsClient.billing.currency || ""}`
-                      : null,
-                },
-              ].map(({ label, value }) => (
-                <Grid item xs={6} key={label}>
-                  <Typography variant="caption" color="text.secondary">
-                    {label}
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {value || "N/A"}
-                  </Typography>
-                </Grid>
-              ))}
-            </Grid>
-          </Box>
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={() => setShowTenantDetails(false)} color="primary" variant="outlined">
-          Close
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-
-  // Deactivate (actually deletes)
   const handleDeactivateClient = (client, isPrivate) => {
     setConfirmDialog({
       open: true,
@@ -358,7 +369,9 @@ export default function SeatMapTable() {
 
   const confirmDeactivate = async () => {
     const { client, isPrivate } = confirmDialog;
-    const collectionName = isPrivate ? "privateOffice" : "seatMap";
+    let collectionName = "seatMap";
+    if (tabIndex === 1 || isPrivate) collectionName = "privateOffice";
+    if (tabIndex === 2) collectionName = "virtualOfficeTenants";
     const clientRef = doc(db, collectionName, client.id);
     await deleteDoc(clientRef);
     setConfirmDialog({ open: false, client: null, isPrivate: false });
@@ -394,7 +407,7 @@ export default function SeatMapTable() {
       key="virtual"
       variant="contained"
       startIcon={<AddIcon />}
-      onClick={() => { setAddModalType("virtual"); setShowAddModal(true); }}
+      onClick={() => { setShowVirtualOfficeModal(true); }}
       sx={{ bgcolor: blue[600], "&:hover": { bgcolor: blue[700] }, mb: 2 }}
       fullWidth
     >
@@ -412,6 +425,7 @@ export default function SeatMapTable() {
         onChange={(_, newValue) => {
           setTabIndex(newValue);
           if (newValue === 1) setIsPrivateTabLoaded(false);
+          if (newValue === 2) setIsVirtualTabLoaded(false);
         }}
         sx={{ mb: 3 }}
         indicatorColor="primary"
@@ -425,9 +439,16 @@ export default function SeatMapTable() {
       {tabAddButtons[tabIndex]}
       <Paper elevation={2}>
         <TableContainer>
-          <Table>
+          <Table
+            sx={{
+              minWidth: 750,
+              borderCollapse: "collapse",
+              "& .MuiTableCell-root": { border: "1px solid #bdbdbd" },
+              "& .MuiTableHead-root .MuiTableCell-root": { backgroundColor: grey[100], fontWeight: 600 }
+            }}
+          >
             <TableHead>
-              <TableRow sx={{ bgcolor: grey[100] }}>
+              <TableRow>
                 <TableCell>
                   <Typography variant="caption" fontWeight={600}>Company</Typography>
                 </TableCell>
@@ -452,7 +473,13 @@ export default function SeatMapTable() {
             </TableHead>
             <TableBody>
               {paginatedClients[tabIndex].map((client) => (
-                <TableRow key={client.id} hover>
+                <TableRow
+                  key={client.id}
+                  hover
+                  sx={{
+                    "&:last-child td, &:last-child th": { borderBottom: "1px solid #bdbdbd" }
+                  }}
+                >
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">{client.company}</Typography>
                   </TableCell>
@@ -514,18 +541,34 @@ export default function SeatMapTable() {
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1}>
-                      <Tooltip title={tabIndex === 1 ? "View Office" : "View Seat Map"}>
-                        <Button
-                          variant="text"
-                          sx={{ color: blue[700], fontWeight: 600, textTransform: 'none' }}
-                          onClick={() => {
-                            setSelectedClient(client);
-                            setShowModal(true);
-                          }}
-                        >
-                          {tabIndex === 1 ? "View Office" : "View Map"}
-                        </Button>
-                      </Tooltip>
+                      {tabIndex === 0 && (
+                        <Tooltip title="View Seat Map">
+                          <Button
+                            variant="text"
+                            sx={{ color: blue[700], fontWeight: 600, textTransform: 'none' }}
+                            onClick={() => {
+                              setSelectedClient(client);
+                              setShowModal(true);
+                            }}
+                          >
+                            View Map
+                          </Button>
+                        </Tooltip>
+                      )}
+                      {tabIndex === 1 && (
+                        <Tooltip title="View Office">
+                          <Button
+                            variant="text"
+                            sx={{ color: blue[700], fontWeight: 600, textTransform: 'none' }}
+                            onClick={() => {
+                              setSelectedClient(client);
+                              setShowModal(true);
+                            }}
+                          >
+                            View Office
+                          </Button>
+                        </Tooltip>
+                      )}
                       <Tooltip title="View Details">
                         <Button
                           variant="text"
@@ -611,7 +654,7 @@ export default function SeatMapTable() {
               </Typography>
               <Divider />
             </Box>
-          ) : (
+          ) : tabIndex === 0 ? (
             <>
               <Box mb={2}>
                 <Typography fontWeight={600} gutterBottom>
@@ -642,7 +685,7 @@ export default function SeatMapTable() {
                 </Box>
               </Box>
             </>
-          )}
+          ) : null}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowModal(false)} color="primary" variant="outlined">
@@ -650,7 +693,12 @@ export default function SeatMapTable() {
           </Button>
         </DialogActions>
       </Dialog>
-      {showTenantDetails && renderTenantDetails()}
+      <TenantDetailsModal
+        open={showTenantDetails}
+        onClose={() => setShowTenantDetails(false)}
+        client={tenantDetailsClient}
+        onExtend={handleOpenExtensionModal}
+      />
       {showAddModal && addModalType === "private" && (
         <AddtenantPO
           showAddModal={showAddModal}
@@ -666,7 +714,19 @@ export default function SeatMapTable() {
           type={addModalType}
         />
       )}
-      {/* Confirm Deactivate Dialog (actually deletes) */}
+      {showVirtualOfficeModal && (
+        <AddTenantVirtual
+          showAddModal={showVirtualOfficeModal}
+          setShowAddModal={setShowVirtualOfficeModal}
+          refreshClients={refreshClients}
+        />
+      )}
+      <ExtensionBillingModal
+        open={extensionModalOpen}
+        onClose={() => setExtensionModalOpen(false)}
+        client={clientToExtend}
+        refreshClients={refreshClients}
+      />
       <Dialog
         open={confirmDialog.open}
         onClose={cancelDeactivate}
