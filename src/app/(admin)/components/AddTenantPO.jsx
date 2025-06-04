@@ -104,6 +104,7 @@ export default function AddTenantPO({
   const [tempSelectedOffices, setTempSelectedOffices] = useState([]);
   const [occupiedOffices, setOccupiedOffices] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({
     name: false,
     company: false,
@@ -131,15 +132,13 @@ export default function AddTenantPO({
   };
 
   // Effect to fetch occupied offices and reset state on open
- useEffect(() => {
+  useEffect(() => {
     async function fetchOccupiedOffices() {
       try {
-        // Fetch from "privateOffice" collection, highlight based on selectedPO field
         const querySnapshot = await getDocs(collection(db, "privateOffice"));
         const allOccupiedOffices = [];
         querySnapshot.forEach((doc) => {
           const tenantData = doc.data();
-          // The field is "selectedPO" (not "selectedOffices")
           if (tenantData.selectedPO) {
             if (Array.isArray(tenantData.selectedPO)) {
               allOccupiedOffices.push(...tenantData.selectedPO);
@@ -195,8 +194,10 @@ export default function AddTenantPO({
   };
 
   const handleAddTenant = async () => {
+    if (isSubmitting) return;
     if (!validateForm()) return;
 
+    setIsSubmitting(true);
     try {
       const computedTotal = calculateTotal();
       const tenantWithOffices = {
@@ -217,6 +218,8 @@ export default function AddTenantPO({
       handleClose();
     } catch (error) {
       console.error("Error adding tenant: ", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -411,6 +414,7 @@ export default function AddTenantPO({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -431,6 +435,7 @@ export default function AddTenantPO({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -458,6 +463,7 @@ export default function AddTenantPO({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -479,6 +485,7 @@ export default function AddTenantPO({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -501,6 +508,7 @@ export default function AddTenantPO({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                 </Grid>
@@ -542,11 +550,11 @@ export default function AddTenantPO({
                               "&:hover": { color: blue[600] },
                             },
                           }}
-                          onDelete={() =>
+                          onDelete={!isSubmitting ? () =>
                             setTempSelectedOffices((prev) =>
                               prev.filter((o) => o !== office)
-                            )
-                          }
+                            ) : undefined}
+                          disabled={isSubmitting}
                         />
                       ))}
                     </Stack>
@@ -646,7 +654,7 @@ export default function AddTenantPO({
                                 background: "#f0f7ff",
                                 },
                             }}
-                            onClick={() => !isOccupied && toggleOfficeSelection(office)}
+                            onClick={!isOccupied && !isSubmitting ? () => toggleOfficeSelection(office) : undefined}
                             >
                             <CardContent
                                 sx={{
@@ -715,6 +723,7 @@ export default function AddTenantPO({
                         value={newTenant.billing.plan}
                         onChange={(e) => handleBillingChange('plan', e.target.value)}
                         label="Billing Plan"
+                        disabled={isSubmitting}
                       >
                         <MenuItem value="monthly">Monthly</MenuItem>
                         <MenuItem value="quarterly">Quarterly</MenuItem>
@@ -739,6 +748,7 @@ export default function AddTenantPO({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
 
                     <TextField
@@ -758,6 +768,7 @@ export default function AddTenantPO({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
 
                     <TextField
@@ -770,6 +781,7 @@ export default function AddTenantPO({
                       InputLabelProps={{
                         shrink: true,
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
 
@@ -780,6 +792,7 @@ export default function AddTenantPO({
                         value={newTenant.billing.paymentMethod}
                         onChange={(e) => handleBillingChange('paymentMethod', e.target.value)}
                         label="Payment Method"
+                        disabled={isSubmitting}
                       >
                         <MenuItem value="credit">Credit Card</MenuItem>
                         <MenuItem value="bank">Bank Transfer</MenuItem>
@@ -796,6 +809,7 @@ export default function AddTenantPO({
                       onChange={(e) => handleBillingChange('billingAddress', e.target.value)}
                       multiline
                       rows={3}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                 </Grid>
@@ -869,6 +883,7 @@ export default function AddTenantPO({
             color: grey[700],
             "&:hover": { bgcolor: grey[100] },
           }}
+          disabled={isSubmitting}
         >
           Cancel
         </Button>
@@ -883,8 +898,9 @@ export default function AddTenantPO({
             bgcolor: blue[600],
             "&:hover": { bgcolor: blue[700] },
           }}
+          disabled={isSubmitting}
         >
-          Add Tenant
+          {isSubmitting ? "Processing..." : "Add Tenant"}
         </Button>
       </DialogActions>
     </Dialog>

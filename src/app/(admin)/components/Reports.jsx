@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, getDocs, where, query, or } from "firebase/firestore";
+import { collection, getDocs, where, query } from "firebase/firestore";
 import {
   Box,
   Card,
@@ -106,6 +106,13 @@ export default function ReservationMeetingReportTabs() {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [meetPage, setMeetPage] = useState(1);
 
+  // --- State for office visits ---
+  const [officeVisits, setOfficeVisits] = useState([]);
+  const [isLoadingOffice, setIsLoadingOffice] = useState(true);
+  const [modalOpenOffice, setModalOpenOffice] = useState(false);
+  const [selectedOffice, setSelectedOffice] = useState(null);
+  const [officePage, setOfficePage] = useState(1);
+
   // --- Fetch visitMap reports ---
   useEffect(() => {
     let unsub = false;
@@ -150,12 +157,58 @@ export default function ReservationMeetingReportTabs() {
     };
   }, []);
 
+  // --- Fetch privateOfficeVisits reports ---
+  useEffect(() => {
+    let unsub = false;
+    const fetchOfficeVisits = async () => {
+      setIsLoadingOffice(true);
+      const q = query(
+        collection(db, "privateOfficeVisits"),
+        where("status", "in", ["accepted", "rejected"])
+      );
+      const querySnapshot = await getDocs(q);
+      const docs = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      const allOfficeVisits = docs.map((doc) => ({
+        ...doc,
+        id: doc.id,
+        name: doc.name,
+        email: doc.email,
+        phone: doc.phone,
+        company: doc.company,
+        details: doc.details,
+        officeNumber: doc.officeNumber,
+        officeSelected: doc.officeSelected,
+        capacity: doc.capacity,
+        amenities: doc.amenities,
+        date: doc.date
+          ? doc.date.seconds
+            ? new Date(doc.date.seconds * 1000)
+            : new Date(doc.date)
+          : null,
+        status: doc.status === "accepted" ? "Accepted" : "Rejected",
+      }));
+      allOfficeVisits.sort(
+        (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
+      );
+      if (!unsub) {
+        setOfficeVisits(allOfficeVisits);
+        setIsLoadingOffice(false);
+      }
+    };
+    fetchOfficeVisits();
+    return () => {
+      unsub = true;
+    };
+  }, []);
+
   // --- Fetch meeting room reports, status: "done" or "rejected" ---
   useEffect(() => {
     let unsub = false;
     const fetchMeetings = async () => {
       setIsLoadingMeet(true);
-      // Firestore doesn't support "in" queries on more than 10 values, but for 2 it's fine.
       const q = query(
         collection(db, "meeting room"),
         where("status", "in", ["done", "rejected"])
@@ -218,6 +271,14 @@ export default function ReservationMeetingReportTabs() {
     setModalOpenMeet(false);
     setSelectedMeeting(null);
   };
+  const handleOpenModalOffice = (office) => {
+    setSelectedOffice(office);
+    setModalOpenOffice(true);
+  };
+  const handleCloseModalOffice = () => {
+    setModalOpenOffice(false);
+    setSelectedOffice(null);
+  };
 
   // --- Pagination logic ---
   const paginatedReservations = reservations.slice(
@@ -228,11 +289,16 @@ export default function ReservationMeetingReportTabs() {
     (meetPage - 1) * ITEMS_PER_PAGE,
     meetPage * ITEMS_PER_PAGE
   );
+  const paginatedOfficeVisits = officeVisits.slice(
+    (officePage - 1) * ITEMS_PER_PAGE,
+    officePage * ITEMS_PER_PAGE
+  );
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Tabs value={tab} onChange={(_, v) => { setTab(v); setResPage(1); setMeetPage(1); }} sx={{ mb: 3 }}>
-        <Tab label="Visit Schedule Report" />
+      <Tabs value={tab} onChange={(_, v) => { setTab(v); setResPage(1); setMeetPage(1); setOfficePage(1); }} sx={{ mb: 3 }}>
+        <Tab label="Dedicated Desk Visit Schedule Report" />
+        <Tab label="Private Office Visit Report" />
         <Tab label="Meeting Room Report" />
       </Tabs>
 
@@ -269,7 +335,13 @@ export default function ReservationMeetingReportTabs() {
             ) : (
               <Box sx={{ overflowX: "auto" }}>
                 <TableContainer component={Paper}>
-                  <Table size="medium">
+                  <Table
+                    size="medium"
+                    sx={{
+                      borderCollapse: "collapse",
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+                    }}
+                  >
                     <TableHead>
                       <TableRow>
                         <TableCell>
@@ -376,8 +448,164 @@ export default function ReservationMeetingReportTabs() {
         </Card>
       )}
 
-      {/* --- Meeting Room Report Tab --- */}
+      {/* --- Private Office Visit Report Tab --- */}
       {tab === 1 && (
+        <Card variant="outlined" sx={{ boxShadow: 2 }}>
+          <CardContent>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems={{ xs: "start", sm: "center" }}
+              flexDirection={{ xs: "column", sm: "row" }}
+              mb={3}
+            >
+              <Typography
+                variant="h5"
+                fontWeight="bold"
+                color="text.primary"
+                gutterBottom
+              >
+                Private Office Visit Report
+              </Typography>
+            </Box>
+
+            {isLoadingOffice ? (
+              <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                minHeight={256}
+              >
+                <CircularProgress color="primary" size={56} thickness={4} />
+              </Box>
+            ) : (
+              <Box sx={{ overflowX: "auto" }}>
+                <TableContainer component={Paper}>
+                  <Table
+                    size="medium"
+                    sx={{
+                      borderCollapse: "collapse",
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+                    }}
+                  >
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Client
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Office
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Date &amp; Time
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Status
+                          </Typography>
+                        </TableCell>
+                        <TableCell />
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {paginatedOfficeVisits.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center">
+                            <Typography color="text.secondary">
+                              No office visits found.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedOfficeVisits.map((office) => (
+                          <TableRow
+                            key={office.id}
+                            hover
+                            sx={{
+                              "&:hover": {
+                                backgroundColor: "action.hover",
+                              },
+                            }}
+                          >
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={500}>
+                                {office.name}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {office.officeNumber || office.officeSelected || "-"}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {office.date
+                                  ? format(office.date, "PPPpp")
+                                  : "N/A"}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={statusChipProps[office.status].label}
+                                sx={{
+                                  ...statusChipProps[office.status].style,
+                                  fontSize: "0.875rem",
+                                  borderRadius: "999px",
+                                  px: 1.5,
+                                }}
+                                size="small"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleOpenModalOffice(office)}
+                                startIcon={<InfoOutlinedIcon />}
+                                sx={{
+                                  fontWeight: 600,
+                                  borderRadius: "999px",
+                                  textTransform: "none",
+                                  borderColor: blue[100],
+                                  color: blue[700],
+                                  "&:hover": {
+                                    backgroundColor: blue[50],
+                                  },
+                                }}
+                              >
+                                View Details
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Stack direction="row" justifyContent="center" mt={3}>
+                  <Pagination
+                    count={Math.ceil(officeVisits.length / ITEMS_PER_PAGE)}
+                    page={officePage}
+                    onChange={(_, val) => setOfficePage(val)}
+                    color="primary"
+                    showFirstButton
+                    showLastButton
+                  />
+                </Stack>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* --- Meeting Room Report Tab --- */}
+      {tab === 2 && (
         <Card variant="outlined" sx={{ boxShadow: 2 }}>
           <CardContent>
             <Box
@@ -409,7 +637,13 @@ export default function ReservationMeetingReportTabs() {
             ) : (
               <Box sx={{ overflowX: "auto" }}>
                 <TableContainer component={Paper}>
-                  <Table size="medium">
+                  <Table
+                    size="medium"
+                    sx={{
+                      borderCollapse: "collapse",
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+                    }}
+                  >
                     <TableHead>
                       <TableRow>
                         <TableCell>
@@ -635,6 +869,104 @@ export default function ReservationMeetingReportTabs() {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseModalRes} color="primary" variant="contained">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* --- Modal for office visit details --- */}
+      <Dialog
+        open={modalOpenOffice}
+        onClose={handleCloseModalOffice}
+        maxWidth="xs"
+        fullWidth
+        aria-labelledby="office-details-title"
+      >
+        <DialogTitle id="office-details-title" sx={{ fontWeight: "bold", pb: 1 }}>
+          Office Visit Details
+        </DialogTitle>
+        <DialogContent dividers>
+          {!selectedOffice ? (
+            <Typography>Loading...</Typography>
+          ) : (
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Name
+                </Typography>
+                <Typography variant="body1">{selectedOffice.name || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Email
+                </Typography>
+                <Typography variant="body1">{selectedOffice.email || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Phone
+                </Typography>
+                <Typography variant="body1">{selectedOffice.phone || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Company
+                </Typography>
+                <Typography variant="body1">{selectedOffice.company || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Office
+                </Typography>
+                <Typography variant="body1">{selectedOffice.officeNumber || selectedOffice.officeSelected || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Capacity
+                </Typography>
+                <Typography variant="body1">{selectedOffice.capacity || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Amenities
+                </Typography>
+                <Typography variant="body1">
+                  {selectedOffice.amenities && selectedOffice.amenities.length
+                    ? selectedOffice.amenities.join(", ")
+                    : "-"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Visit Date &amp; Time
+                </Typography>
+                <Typography variant="body1">
+                  {selectedOffice.date
+                    ? format(selectedOffice.date, "PPPpp")
+                    : "N/A"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Status
+                </Typography>
+                <Chip
+                  label={statusChipProps[selectedOffice.status]?.label || selectedOffice.status}
+                  sx={{
+                    ...statusChipProps[selectedOffice.status],
+                    fontWeight: 600,
+                    px: 1.5,
+                    borderRadius: "999px",
+                  }}
+                  size="small"
+                />
+              </Box>
+              <Divider />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseModalOffice} color="primary" variant="contained">
             Close
           </Button>
         </DialogActions>

@@ -139,6 +139,7 @@ export default function AddTenantModal({
   const [tempSelectedSeats, setTempSelectedSeats] = useState([]);
   const [occupiedSeats, setOccupiedSeats] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({
     name: false,
     company: false,
@@ -225,8 +226,10 @@ export default function AddTenantModal({
   };
 
   const handleAddTenant = async () => {
+    if (isSubmitting) return;
     if (!validateForm()) return;
 
+    setIsSubmitting(true);
     try {
       const computedTotal = calculateTotal();
       const tenantWithSeats = {
@@ -247,6 +250,8 @@ export default function AddTenantModal({
       handleClose();
     } catch (error) {
       console.error("Error adding tenant: ", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -422,9 +427,9 @@ export default function AddTenantModal({
                             }}
                             disableRipple
                             disableFocusRipple
-                            disabled={disabled}
+                            disabled={disabled || isSubmitting}
                             onClick={
-                              !disabled
+                              !disabled && !isSubmitting
                                 ? () => toggleSeatSelection(seatKey)
                                 : undefined
                             }
@@ -561,6 +566,7 @@ export default function AddTenantModal({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -581,6 +587,7 @@ export default function AddTenantModal({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -608,6 +615,7 @@ export default function AddTenantModal({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -629,6 +637,7 @@ export default function AddTenantModal({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -651,6 +660,7 @@ export default function AddTenantModal({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                 </Grid>
@@ -692,11 +702,11 @@ export default function AddTenantModal({
                               "&:hover": { color: blue[600] },
                             },
                           }}
-                          onDelete={() =>
+                          onDelete={!isSubmitting ? () =>
                             setTempSelectedSeats((prev) =>
                               prev.filter((s) => s !== seat)
-                            )
-                          }
+                            ) : undefined}
+                          disabled={isSubmitting}
                         />
                       ))}
                     </Stack>
@@ -805,6 +815,7 @@ export default function AddTenantModal({
                         value={newTenant.billing.plan}
                         onChange={(e) => handleBillingChange('plan', e.target.value)}
                         label="Billing Plan"
+                        disabled={isSubmitting}
                       >
                         <MenuItem value="monthly">Monthly</MenuItem>
                         <MenuItem value="quarterly">Quarterly</MenuItem>
@@ -829,6 +840,7 @@ export default function AddTenantModal({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
 
                     <TextField
@@ -848,6 +860,7 @@ export default function AddTenantModal({
                           </InputAdornment>
                         ),
                       }}
+                      disabled={isSubmitting}
                     />
 
                     <TextField
@@ -860,6 +873,7 @@ export default function AddTenantModal({
                       InputLabelProps={{
                         shrink: true,
                       }}
+                      disabled={isSubmitting}
                     />
                   </Grid>
 
@@ -870,6 +884,7 @@ export default function AddTenantModal({
                         value={newTenant.billing.paymentMethod}
                         onChange={(e) => handleBillingChange('paymentMethod', e.target.value)}
                         label="Payment Method"
+                        disabled={isSubmitting}
                       >
                         <MenuItem value="credit">Credit Card</MenuItem>
                         <MenuItem value="bank">Bank Transfer</MenuItem>
@@ -886,6 +901,7 @@ export default function AddTenantModal({
                       onChange={(e) => handleBillingChange('billingAddress', e.target.value)}
                       multiline
                       rows={3}
+                      disabled={isSubmitting}
                     />
                   </Grid>
                 </Grid>
@@ -959,6 +975,7 @@ export default function AddTenantModal({
             color: grey[700],
             "&:hover": { bgcolor: grey[100] },
           }}
+          disabled={isSubmitting}
         >
           Cancel
         </Button>
@@ -973,8 +990,9 @@ export default function AddTenantModal({
             bgcolor: blue[600],
             "&:hover": { bgcolor: blue[700] },
           }}
+          disabled={isSubmitting}
         >
-          Add Tenant
+          {isSubmitting ? "Processing..." : "Add Tenant"}
         </Button>
       </DialogActions>
     </Dialog>

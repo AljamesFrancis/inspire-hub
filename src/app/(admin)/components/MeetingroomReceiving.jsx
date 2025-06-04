@@ -7,8 +7,6 @@ import {
 } from "firebase/firestore";
 import { db } from "./../../../../script/firebaseConfig";
 
-
-// MUI Components
 import {
   Box,
   Typography,
@@ -75,7 +73,6 @@ function formatTime24h(time) {
   if (typeof time === "object" && "seconds" in time) {
     dateObj = new Date(time.seconds * 1000);
   } else if (typeof time === "string" && time.length >= 4 && time.includes(":")) {
-    // Accepts e.g. "1:41pm", "13:41", "01:41"
     const pmMatch = time.match(/(\d{1,2}):(\d{2})\s*pm/i);
     const amMatch = time.match(/(\d{1,2}):(\d{2})\s*am/i);
     let hour, min;
@@ -278,9 +275,16 @@ const AdminDashboard = () => {
       </Paper>
 
       <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: 3 }}>
-        <Table>
+        <Table
+          sx={{
+            borderCollapse: "collapse",
+            minWidth: 900,
+            "& .MuiTableCell-root": { border: "1px solid #bdbdbd" },
+            "& .MuiTableHead-root .MuiTableCell-root": { backgroundColor: theme.palette.grey[100], fontWeight: 600 }
+          }}
+        >
           <TableHead>
-            <TableRow sx={{ background: theme.palette.grey[100] }}>
+            <TableRow>
               <TableCell align="center">Name</TableCell>
               <TableCell align="center">Email</TableCell>
               <TableCell align="center">Date</TableCell>
