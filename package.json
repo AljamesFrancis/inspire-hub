@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@firebase/vertexai": "^1.2.4",
     "@emailjs/browser": "^4.4.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
@@ -26,7 +27,11 @@
     "react": "^19.0.0",
     "react-datepicker": "^8.4.0",
     "react-dom": "^19.0.0",
+    "react-icon": "^1.0.0",
     "react-icons": "^5.5.0",
+    "react-router-dom": "^7.6.1",
+    "react-simple-chatbot": "^0.6.1",
+    "styled-components": "^4.4.1"
     "recharts": "^2.15.3",
     "yarn": "^1.22.22"
   },

@@ -55,9 +55,7 @@ const About = () => {
             collaborative and inspiring atmosphere.
           </p>
 
-          <button className="bg-blue-600 hover:bg-blue-700 transition duration-300 text-white font-semibold py-3 px-8 rounded-lg shadow-md">
-            Learn about the Community
-          </button>
+          
         </div>
       </div>
     </div>

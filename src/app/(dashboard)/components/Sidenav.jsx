@@ -1,90 +1,98 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { FaBars } from 'react-icons/fa';
-import Link from 'next/link'; 
+import React, { useState, useEffect } from "react";
+import { FaBars, FaTimes } from "react-icons/fa";
+import Link from "next/link";
+import Image from "next/image";
 
 const Sidenav = () => {
-  const [isHovered, setIsHovered] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(true);
 
   const menuItems = [
-    { name: 'Home', path: '/main' },
-    { name: 'Book', path: '/booking' },
-    { name: 'Reservation', path: '/reservation' },
-    { name: 'Reservation History', path: '/reservationHistory' },
-    { name: 'Billing', path: '/billing' },
-    { name: 'Profile', path: '/profile' },
-    { name: 'Logout', path: '/' },
+   
+   
   ];
 
-  const handleToggle = () => {
-    setIsOpen(!isOpen);
+  const handleMobileMenuToggle = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
   useEffect(() => {
     const handleResize = () => {
-      setIsDesktop(window.innerWidth > 768);
+      const desktop = window.innerWidth > 768;
+      setIsDesktop(desktop);
+      if (desktop) setIsMobileMenuOpen(false);
     };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+
+    handleResize(); // run once on mount
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const isExpanded = isHovered || isOpen;
-
   return (
-    <div
-      className="fixed top-0 left-0 h-full flex flex-col items-center py-4 z-50"
-      style={{
-        width: isExpanded ? '200px' : '60px',
-        backgroundColor: isExpanded
-          ? 'rgba(31, 41, 55, 1)'
-          : 'rgba(31, 41, 55, 0)',
-        transition: 'width 0.3s ease, background-color 0.3s ease',
-      }}
-      onMouseEnter={() => {
-        if (isDesktop) setIsHovered(true);
-      }}
-      onMouseLeave={() => {
-        if (isDesktop) setIsHovered(false);
-      }}
-    >
-      {/* Hamburger Icon (only when not expanded) */}
-      {!isExpanded && (
-        <>
-          {/* Mobile Hamburger */}
-          <button
-            onClick={handleToggle}
-            className="md:hidden text-white text-2xl mb-8"
-          >
-            <FaBars />
-          </button>
-  
-          {/* Desktop Hamburger */}
-          <div className="hidden md:block">
-            <FaBars className="text-white text-2xl mb-8" />
-          </div>
-        </>
-      )}
-  
-      <ul className="flex flex-col gap-6 mt-10">
-        {menuItems.map((item, index) => (
-          <li
-            key={index}
-            className={`text-white text-sm font-medium ${
-              isExpanded ? 'opacity-100' : 'opacity-0'
-            } transition-opacity duration-200`}
-          >
-            <Link href={item.path}>
+    <header className="fixed top-0 left-0 right-0 bg-[#2b2b2b] text-[#d5ae85] shadow-md z-30">
+      <div className="container mx-right px-8 py-3 flex justify-between items-center">
+        {/* Left Side - Logo or Title */}
+       
+
+        
+
+        {/* Middle - Desktop Navigation */}
+        <nav className="hidden md:flex space-x-6">
+          {menuItems.map((item, index) => (
+            <Link
+              key={index}
+              href={item.path}
+              className="hover:text-blue-200 transition-colors"
+            >
               {item.name}
             </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
+          ))}
+        </nav>
+
+    
+        <div className="hidden md:block w-280 ">
+          <Image
+            src="/images/inspirelogo.png"
+            alt="Partner Logo"
+            width={120}
+            height={40}
+            className="h-10 w-auto"
+          />
+        </div>
+ <Link href="/" className="text-xl font-bold">
+          Log out
+        </Link>
+        {/* Mobile Toggle Button */}
+        <button
+          className="md:hidden text-2xl"
+          onClick={handleMobileMenuToggle}
+          aria-label="Toggle mobile menu"
+        >
+          {isMobileMenuOpen ? <FaTimes /> : <FaBars />}
+        </button>
+      </div>
+
+      {/* Mobile Menu */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden bg-[#1e293b]">
+          <ul className="py-2 px-4 space-y-3">
+            {menuItems.map((item, index) => (
+              <li key={index}>
+                <Link
+                  href={item.path}
+                  className="block py-2 px-3 rounded hover:bg-blue-700 transition-colors"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  {item.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </header>
   );
-  
 };
 
 export default Sidenav;

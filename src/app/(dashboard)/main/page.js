@@ -7,18 +7,21 @@ const carouselItems = [
   {
     id: 1,
     title: "Dedicated Desks",
+    type: "desks",
     image: "/images/IMG_5320.jpg",
     description: "Enjoy a co-working environment tailored to meet the needs of freelancers, start-ups, and entrepreneurs."
   },
   {
     id: 2,
     title: "Meeting Rooms", 
+    type: "meeting-rooms",
     image: "/images/IMG_5330.jpg",
     description: "Professional meeting rooms available for hourly rental with premium amenities."
   },
   {
     id: 3,
     title: "Private Offices",
+    type: "private-offices",
     image: "/images/IMG_5302.jpg",
     description: "Professionally furnished private offices available for lease in Uptown Bonifacio."
   }, 
@@ -27,7 +30,8 @@ const carouselItems = [
 const Page = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
-  const router = useRouter(); // Initialize the router
+
+  const router = useRouter();
 
   const goToSlide = (index) => {
     setIsAnimating(true);
@@ -36,12 +40,19 @@ const Page = () => {
   };
 
   const handleBookNow = (item) => {
-    console.log("client:", item.title);
-    router.push(`/client?type=${encodeURIComponent(item.title)}`);
-    // Alternatively, to pass the entire item as state:
-    // router.push({
-    //   query: { type: item.title },
-    // });
+    if (item.type === "desks") {
+      router.push("/client");
+    } 
+    else if (item.type === "meeting-rooms") {
+      router.push("/book/meeting-rooms");
+    }
+    else if (item.type === "private-offices") {
+      router.push("/client");
+    }
+    else {
+      // Default fallback
+      router.push("/booking");
+    }
   };
 
   useEffect(() => {
@@ -79,34 +90,31 @@ const Page = () => {
                 />
                 
                 {/* Content Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent flex flex-col justify-end p-6 sm:p-8 md:p-10">
-                          {/* Logo Overlay - Add this container */}
-                          <div className="absolute top-4 right-4 w-16 h-16 sm:top-0 sm:right-90 sm:w-200 sm:h-120 md:w-150 md:h-60 z-10">
-                            <img 
-                              src="/images/logogogo.png" // Update with your logo path
-                              alt="Company Logo"
-                              className="w-full h-full object-contain"
-                            />
-                          </div>
-
-                          <div className="max-w-1xl mx-auto w-full">
-                            <h2 className="text-2xl sm:text-3xl  md:text-4xl font-bold text-amber-300 mb-2 font-serif">
-                              {item.title}
-                            </h2>
-                            <p className="text-white/90 text-sm sm:text-base md:text-lg mb-4 sm:mb-6 font-serif">
-                              {item.description}
-                            </p>
-                            <button
-                              onClick={() => handleBookNow(item)}
-                              className="px-6 py-2 sm:px-8 sm:py-3 bg-amber-500 hover:bg-red-500 text-white font-medium rounded-md transition-all duration-300 transform hover:scale-105 shadow-lg"
-                            >
-                              Book Now
-                            </button>
-                          </div>
-                        </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/70 to-transparent flex flex-col justify-end p-6 sm:p-8 md:p-10">
+                  <div className="absolute top-4 right-4 w-16 h-16 sm:top-0 sm:right-90 sm:w-200 sm:h-120 md:w-150 md:h-60 z-10">
+                    <img 
+                      src="/images/logogogo.png"
+                      alt="Company Logo"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
-                
-           
+
+                  <div className="max-w-1xl mx-auto w-full">
+                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-amber-300 mb-2 font-serif">
+                      {item.title}
+                    </h2>
+                    <p className="text-white/90 text-sm sm:text-base md:text-lg mb-4 sm:mb-6 font-serif">
+                      {item.description}
+                    </p>
+                    <button
+                      onClick={() => handleBookNow(item)}
+                      className="px-6 py-2 sm:px-8 sm:py-3 bg-amber-500 hover:bg-red-500 text-white font-medium rounded-md transition-all duration-300 transform hover:scale-105 shadow-lg"
+                    >
+                      Book Now
+                    </button>
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
           
