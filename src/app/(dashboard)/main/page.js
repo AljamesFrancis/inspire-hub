@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"; // Changed from react-router-dom to Next.js router
 
 const carouselItems = [
   {
@@ -30,6 +30,7 @@ const carouselItems = [
 const Page = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
+
   const router = useRouter();
 
   const goToSlide = (index) => {
