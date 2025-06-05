@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import { CalendarIcon, ClockIcon } from "@heroicons/react/24/outline";
 import {collection,addDoc,getDocs,query,where,} from "firebase/firestore";
 import { db } from "../../../../script/firebaseConfig";
 import { auth } from "../../../../script/auth";
-import Image from "next/image";
 
-
-
-const ROW_OPTIONS = ["Map-1", "Map-2", "Map-3", "Map-4", "5"];
+const ROW_OPTIONS = ["Map-1", "Map-2", "Map-3", "Map-4", "Map-5", "Map-6", "Map-7", "Map-8", "Map-9", "Map-10", "Map-11", "Map-12", "13"];
 
 const AREA_OPTIONS = [
   "A_Row", "B_Row", "C_Row", "D_Row", "E_Row", "F_Row", "G_Row", "H_Row",
@@ -17,94 +17,65 @@ const AREA_OPTIONS = [
   "W_Row", "X_Row", "Y_Row", "Z_Row"
 ];
 
-// Fixed SEATS_BY_AREA by combining map identifiers with row names
-const SEATS_BY_AREA = {
-  // SEAT MAP 1
-  "Map1 A Row": ["map1-A1", "map1-A2", "map1-A3", "map1-A4", "map1-A5", "map1-A6"],
-  "Map1 B Row": ["map1-B1", "map1-B2", "map1-B3", "map1-B4", "map1-B5", "map1-B6"],
-  "Map1 C Row": ["map1-C1", "map1-C2", "map1-C3", "map1-C4", "map1-C5", "map1-C6"],
-  "Map1 D Row": ["map1-D1", "map1-D2", "map1-D3", "map1-D4", "map1-D5", "map1-D6"],
-  "Map1 E Row": ["map1-E1", "map1-E2", "map1-E3", "map1-E4", "map1-E5", "map1-E6"],
-  "Map1 F Row": ["map1-F1", "map1-F2", "map1-F3", "map1-F4", "map1-F5", "map1-F6"],
-  "Map1 G Row": ["map1-G1", "map1-G2", "map1-G3", "map1-G4", "map1-G5", "map1-G6"],
-  "Map1 H Row": ["map1-H1", "map1-H2", "map1-H3", "map1-H4", "map1-H5", "map1-H6"],
-  "Map1 I Row": ["map1-I1", "map1-I2", "map1-I3", "map1-I4"],
-  "Map1 J Row": ["map1-J1", "map1-J2", "map1-J3", "map1-J4"],
-  "Map1 K Row": ["map1-K1", "map1-K2", "map1-K3", "map1-K4"],
-  "Map1 L Row": ["map1-L1", "map1-L2", "map1-L3", "map1-L4"],
-  "Map1 M Row": ["map1-M1", "map1-M2", "map1-M3", "map1-M4"],
-  "Map1 N Row": ["map1-N1", "map1-N2", "map1-N3", "map1-N4"],
+const ROOMS_BY_AREA = {
+  // PRIVATE ROOM MAP 1
+  "BICOL": ["Vacant"],
   
-  // SEAT MAP 2
-  "Map2 A Row": ["map2-A1", "map2-A2", "map2-A3", "map2-A4", "map2-A5", "map2-A6"],
-  "Map2 B Row": ["map2-B1", "map2-B2", "map2-B3", "map2-B4", "map2-B5", "map2-B6"],
-  "Map2 C Row": ["map2-C1", "map2-C2", "map2-C3", "map2-C4", "map2-C5", "map2-C6"],
-  "Map2 D Row": ["map2-D1", "map2-D2", "map2-D3", "map2-D4", "map2-D5", "map2-D6"],
-  "Map2 E Row": ["map2-E1", "map2-E2", "map2-E3", "map2-E4", "map2-E5", "map2-E6"],
-  "Map2 F Row": ["map2-F1", "map2-F2", "map2-F3", "map2-F4", "map2-F5", "map2-F6"],
-  "Map2 G Row": ["map2-G1", "map2-G2", "map2-G3", "map2-G4", "map2-G5", "map2-G6"],
-  "Map2 H Row": ["map2-H1", "map2-H2", "map2-H3", "map2-H4", "map2-H5", "map2-H6"],
-  "Map2 I Row": ["map2-I1", "map2-I2", "map2-I3", "map2-I4"],
-  "Map2 J Row": ["map2-J1", "map2-J2", "map2-J3", "map2-J4"],
-  "Map2 K Row": ["map2-K1", "map2-K2", "map2-K3", "map2-K4"],
-  "Map2 L Row": ["map2-L1", "map2-L2", "map2-L3", "map2-L4"],
-  "Map2 M Row": ["map2-M1", "map2-M2", "map2-M3", "map2-M4"],
-  "Map2 N Row": ["map2-N1", "map2-N2", "map2-N3", "map2-N4"],
+  //  PRIVATE ROOM MAP 2
+  "CEBU": ["Vacant"],
+  
+  // PRIVATE ROOM MAP 3
+  "PAMPANGA": ["Vacant"],
+  
+  // PRIVATE ROOM MAP 4
+  "NUEVA ECIJA": ["Vacant"],
 
-  // Seat Map 3
-  "Map3 A Row": ["map3-A1", "map3-A2", "map3-A3", "map3-A4", "map3-A5", "map3-A6"],
-  "Map3 B Row": ["map3-B1", "map3-B2", "map3-B3", "map3-B4", "map3-B5", "map3-B6"],
-  "Map3 C Row": ["map3-C1", "map3-C2", "map3-C3", "map3-C4", "map3-C5", "map3-C6"],
-  "Map3 D Row": ["map3-D1", "map3-D2", "map3-D3", "map3-D4", "map3-D5", "map3-D6"],
-  "Map3 E Row": ["map3-E1", "map3-E2", "map3-E3", "map3-E4", "map3-E5", "map3-E6"],
-  "Map3 F Row": ["map3-F1", "map3-F2", "map3-F3", "map3-F4", "map3-F5", "map3-F6"],
-  "Map3 G Row": ["map3-G1", "map3-G2", "map3-G3", "map3-G4", "map3-G5", "map3-G6"],
-  "Map3 H Row": ["map3-H1", "map3-H2", "map3-H3", "map3-H4", "map3-H5", "map3-H6"],
-  "Map3 I Row": ["map3-I1", "map3-I2", "map3-I3", "map3-I4"],
-  "Map3 J Row": ["map3-J1", "map3-J2", "map3-J3", "map3-J4"],
-  "Map3 K Row": ["map3-K1", "map3-K2", "map3-K3", "map3-K4"],
-  "Map3 L Row": ["map3-L1", "map3-L2", "map3-L3", "map3-L4"],
+  // PRIVATE ROOM MAP 5
+  "PANGASINAN": ["Vacant"],
 
-  // Seat Map 4
-  "Map4 A Row": ["map4-A1", "map4-A2", "map4-A3", "map4-A4", "map4-A5", "map4-A6"],
-  "Map4 B Row": ["map4-B1", "map4-B2", "map4-B3", "map4-B4", "map4-B5", "map4-B6"],
-  "Map4 C Row": ["map4-C1", "map4-C2", "map4-C3", "map4-C4", "map4-C5", "map4-C6"],
-  "Map4 D Row": ["map4-D1", "map4-D2", "map4-D3", "map4-D4", "map4-D5", "map4-D6"],
-  "Map4 E Row": ["map4-E1", "map4-E2", "map4-E3", "map4-E4", "map4-E5", "map4-E6"],
-  "Map4 F Row": ["map4-F1", "map4-F2", "map4-F3", "map4-F4", "map4-F5", "map4-F6"],
-  "Map4 G Row": ["map4-G1", "map4-G2", "map4-G3", "map4-G4", "map4-G5", "map4-G6"],
+  // PRIVATE ROOM MAP 6
+  "LAGUNA": ["Occupied"],
 
-  // Seat Map 5
-  "Map5 A Row": ["map5-A1", "map5-A2", "map5-A3", "map5-A4"],
-  "Map5 B Row": ["map5-B1", "map5-B2", "map5-B3", "map5-B4"],
-  "Map5 C Row": ["map5-C1", "map5-C2", "map5-C3", "map5-C4"],
-  "Map5 D Row": ["map5-D1", "map5-D2", "map5-D3", "map5-D4"],
-  "Map5 E Row": ["map5-E1", "map5-E2", "map5-E3", "map5-E4"],
-  "Map5 F Row": ["map5-F1", "map5-F2", "map5-F3", "map5-F4"],
-  "Map5 G Row": ["map5-G1", "map5-G2", "map5-G3", "map5-G4"],
-  "Map5 H Row": ["map5-H1", "map5-H2", "map5-H3", "map5-H4"],
-  "Map5 I Row": ["map5-I1", "map5-I2", "map5-I3", "map5-I4"],
-  "Map5 J Row": ["map5-J1", "map5-J2", "map5-J3", "map5-J4"],
-  "Map5 K Row": ["map5-K1", "map5-K2", "map5-K3", "map5-K4"],
-  "Map5 L Row": ["map5-L1", "map5-L2", "map5-L3", "map5-L4"]
+  // PRIVATE ROOM MAP 7
+  "RIZAL": ["Occupied"],
+
+  // PRIVATE ROOM MAP 8
+  "BACOLOD": ["Occupied"],
+
+  // PRIVATE ROOM MAP 9
+  "ILOILO": ["Occupied"],
+
+  // PRIVATE ROOM MAP 10
+  "BATANGAS": ["Vacant"],
+
+  // PRIVATE ROOM MAP 11
+  "MINDORO": ["Vacant"],
+
+  // PRIVATE ROOM MAP 12
+  "CAGAYAN DE ORO": ["Vacant"],
+
+  // PRIVATE ROOM MAP 13
+  "QUEZON": ["Vacant"],
+
 };
 
 const BookingForm = () => {
   const [selectedMap, setSelectedRow] = useState("");
   const [selectedArea, setSelectedArea] = useState("");
-  const [selectedSeats, setSelectedSeats] = useState([]);
-  const [reservedSeats, setReservedSeats] = useState([]);
+  const [selectedRooms, setSelectedRooms] = useState([]);
+  const [reservedRooms, setReservedRooms] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [showReceipt, setShowReceipt] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [highlightedArea, setHighlightedArea] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [isRoomOccupied, setIsRoomOccupied] = useState(false);
 
-  const seatsForArea = SEATS_BY_AREA[selectedArea] || [];
+  const roomsForArea = ROOMS_BY_AREA[selectedArea] || [];
 
   useEffect(() => {
-    const fetchReservedSeats = async () => {
+    const fetchReservedRooms = async () => {
       if (!selectedArea || !selectedDate || !selectedTime) return;
 
       const q = query(
@@ -116,19 +87,43 @@ const BookingForm = () => {
       );
 
       const snapshot = await getDocs(q);
-      const takenSeats = snapshot.docs.flatMap(doc => doc.data().seats || []);
-      setReservedSeats(takenSeats);
+      const takenRooms = snapshot.docs.flatMap(doc => doc.data().rooms || []);
+      setReservedRooms(takenRooms);
     };
 
-    fetchReservedSeats();
+    fetchReservedRooms();
   }, [selectedArea, selectedDate, selectedTime]);
 
-  const handleSeatClick = (seat) => {
-    if (reservedSeats.includes(seat)) return;
-    setSelectedSeats((prev) =>
-      prev.includes(seat) ? prev.filter((s) => s !== seat) : [...prev, seat]
+  const handleRoomClick = (room) => {
+    if (reservedRooms.includes(room)) return;
+    setSelectedRooms((prev) =>
+      prev.includes(room) ? prev.filter((r) => r !== room) : [...prev, room]
     );
   };
+
+const checkRoomStatus = (roomName) => {
+  if (!roomName) return false;
+  const foundArea = Object.entries(ROOMS_BY_AREA).find(([area]) =>
+    area.toLowerCase() === roomName.toLowerCase()
+  );
+
+  if (!foundArea) {
+    alert(`Room "${roomName}" was not found.`);
+    setIsRoomOccupied(false); // fallback
+    return;
+  }
+
+  const [areaName, rooms] = foundArea;
+  const isOccupied = rooms.some(room => room.toLowerCase() === "occupied");
+  setIsRoomOccupied(isOccupied); // ✅ update state
+
+  if (isOccupied) {
+    alert(`${areaName} is currently OCCUPIED.`);
+  } else {
+    alert(`${areaName} is AVAILABLE for viewing.`);
+  }
+};
+
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -141,21 +136,21 @@ const BookingForm = () => {
       const userName = user ? (user.displayName || user.email) : "Anonymous";
       const userEmail = user ? user.email : "No Email";
 
-      await addDoc(collection(db, "visitMap"), {
+      await addDoc(collection(db, "privateOfficeVisits"), {
         name: userName,
         email: userEmail,
         phone: phoneNumber,
         date: selectedDate,
         time: selectedTime,
         area: selectedArea,
-        reservedSeats: selectedSeats,
+        reservedRooms: selectedRooms,
         timestamp: new Date(),
         status: "pending",
       });
 
       alert("Reservation submitted!");
       setShowReceipt(false);
-      setSelectedSeats([]);
+      setSelectedRooms([]);
       setSelectedArea("");
       setSelectedDate("");
       setSelectedTime("");
@@ -166,10 +161,10 @@ const BookingForm = () => {
     }
   };
 
-  const filteredAreas = Object.keys(SEATS_BY_AREA).filter(area =>
+  const filteredAreas = Object.keys(ROOMS_BY_AREA).filter(area =>
     area.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    SEATS_BY_AREA[area].some(seat =>
-      seat.toLowerCase().includes(searchTerm.toLowerCase())
+    ROOMS_BY_AREA[area].some(room =>
+      room.toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
 
@@ -179,7 +174,7 @@ const BookingForm = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="max-w-7xl mx-auto py-6 px-4 mt-20">
-        <h1 className="text-3xl font-bold text-gray-900">PRIVATE ROOM RESERVATION</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Private Room Reservation</h1>
       </header>
 
       <main className="max-w-7xl mx-auto py-8 px-4">
@@ -188,27 +183,62 @@ const BookingForm = () => {
           <div className="lg:w-1/2 bg-white p-6 rounded-lg shadow-sm">
             <h1 className="text-3xl font-semibold text-gray-900 mb-4">Book Private Room</h1>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Date</label>
-                <input 
-                  type="date" 
-                  value={selectedDate} 
-                  onChange={(e) => setSelectedDate(e.target.value)} 
-                  required 
-                  className="w-full p-3 border rounded-md" 
-                />
-              </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-gray-700">Date</label>
+                     <div className="relative"> {/* New wrapper div */}
+                    <DatePicker
+                                selected={selectedDate ? new Date(selectedDate) : null}
+                                onChange={(date) => setSelectedDate(date.toISOString().split("T")[0])}
+                                filterDate={(date) => {
+                                  const day = date.getDay(); // 0 = Sun, 6 = Sat
+                                  if (day === 0 || day === 6) return false; // disable weekends
 
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Time</label>
-                <input 
-                  type="time" 
-                  value={selectedTime} 
-                  onChange={(e) => setSelectedTime(e.target.value)} 
-                  required 
-                  className="w-full p-3 border rounded-md" 
-                />
-              </div>
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+
+                                  // Calculate date 2 weekdays from now
+                                  let weekdaysAdded = 0;
+                                  let checkDate = new Date(today);
+                                  while (weekdaysAdded < 2) {
+                                    checkDate.setDate(checkDate.getDate() + 1);
+                                    const checkDay = checkDate.getDay();
+                                    if (checkDay !== 0 && checkDay !== 6) weekdaysAdded++;
+                                  }
+
+                                  return date >= checkDate;
+                                }}
+                                minDate={new Date()}
+                                className="w-full p-3 border border-black rounded-md focus:ring-blue-500 focus:border-blue-500 placeholder-black"
+                                placeholderText="mm/dd/yyyy"
+                                dateFormat="yyyy-MM-dd"
+                                wrapperClassName="w-full"
+                                />
+                                   <CalendarIcon className="absolute right-3 top-3 h-5 w-5 text-black pointer-events-none" /> {/* New icon */}
+  </div>
+</div>
+
+<div className="space-y-1">
+  <label className="text-sm font-medium text-gray-700">Time</label>
+  <select
+    value={selectedTime}
+    onChange={(e) => setSelectedTime(e.target.value)}
+    required
+    className="w-full p-3 border rounded-md"
+  >
+    <option value="" disabled>Select time</option>
+    {Array.from({ length: 13 }, (_, i) => {
+      const hour = i + 8; // Starts at 7 AM (7) to 7 PM (19)
+      const period = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour === 12 ? 12 : hour > 12 ? hour - 12 : hour;
+      
+      return (
+        <option key={hour} value={`${hour.toString().padStart(2, '0')}:00`}>
+          {displayHour}:00 {period} {/* Changed to .00 format */}
+        </option>
+      );
+    })}
+  </select>
+</div>
 
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Phone Number</label>
@@ -218,7 +248,7 @@ const BookingForm = () => {
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   placeholder="Enter your phone number"
                   required
-                  className="w-full p-3 border rounded-md"
+                  className="w-full p-3 border rounded-md placeholder-black"
                 />
               </div>
 
@@ -228,63 +258,78 @@ const BookingForm = () => {
                   value={selectedArea} 
                   onChange={(e) => { 
                     setSelectedArea(e.target.value); 
-                    setSelectedSeats([]); 
+                    setSelectedRooms([]); 
                   }} 
                   required 
                   className="w-full p-3 border rounded-md"
                 >
-                  <option value="" disabled>Select an area</option>
-                  {Object.keys(SEATS_BY_AREA).map((area) => (
-                    <option key={area} value={area}>{area}</option>
-                  ))}
+                  <option value="" disabled>Select a room</option>
+                    {Object.entries(ROOMS_BY_AREA).map(([area, rooms]) => {
+                      const isOccupied = rooms.includes("Occupied");
+                        return (
+                  <option
+                    key={area}
+                    value={area}
+                    disabled={isOccupied}
+                    className={isOccupied ? "text-red-500" : ""}
+                >
+                    {area} {isOccupied ? "(Occupied)" : ""}
+                    </option>
+                     );
+                    })}
+
                 </select>
               </div>
 
               {selectedArea && (
                 <div className="space-y-4">
                   <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Available Seats</label>
+                    <label className="text-sm font-medium text-gray-700">Available Rooms</label>
                     <div className="flex flex-wrap gap-2">
-                      {seatsForArea.map((seat) => {
-                        const isReserved = reservedSeats.includes(seat);
-                        const isSelected = selectedSeats.includes(seat);
+                      {roomsForArea.map((room) => {
+                        const isReserved = reservedRooms.includes(room);
+                        const isSelected = selectedRooms.includes(room);
 
                         return (
                           <button
-                            key={seat}
+                            key={room}
                             type="button"
-                            onClick={() => handleSeatClick(seat)}
-                            disabled={isReserved}
-                            className={`w-20 h-15 flex items-center justify-center rounded-md transition-colors
-                              ${isReserved ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                                : isSelected ? "bg-blue-600 text-white"
-                                  : "bg-white border border-gray-200 hover:border-blue-400"}`}
+                            onClick={() => handleRoomClick(room)}
+                            disabled={isReserved || isRoomOccupied} // ✅ Disable if reserved or occupied
+                              className={`w-20 h-15 flex items-center justify-center rounded-md transition-colors
+                                ${
+                                  isReserved || isRoomOccupied
+                                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                                    : isSelected
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-white border border-gray-200 hover:border-blue-400"
+                                }`}
                           >
-                            {seat}
+                            {room}
                           </button>
                         );
                       })}
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
-                      {selectedSeats.length > 0
-                        ? `Selected: ${selectedSeats.join(", ")}`
-                        : "Click seats to select"}
+                      {selectedRooms.length > 0
+                        ? `Selected: ${selectedRooms.join(", ")}`
+                        : "Click rooms to select"}
                     </p>
                   </div>
 
                   <div className="flex gap-3 pt-4">
                     <button 
                       type="submit" 
-                      disabled={selectedSeats.length === 0} 
+                      disabled={selectedRooms.length === 0 || isRoomOccupied} // ✅ Disable if no rooms or room is occupied
                       className="flex-1 p-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300"
                     >
-                      Reserve Seats
+                      Reserve Room
                     </button>
-                    {selectedSeats.length > 0 && (
+                    {selectedRooms.length > 0 && (
                       <button 
                         type="button" 
-                        onClick={() => setSelectedSeats([])} 
-                        className="p-3 border rounded-md hover:bg-gray-50"
+                        onClick={() => setSelectedRooms([])} 
+                        className="p-3 border rounded-md hover:bg-gray-50 disabled:bg-gray-200"
                       >
                         Clear
                       </button>
@@ -298,15 +343,22 @@ const BookingForm = () => {
           {/* Map Section */}
           <div className="lg:w-1/2 bg-white p-6 rounded-lg shadow-sm">
             <div className="space-y-4">
-              <h2 className="text-xl font-light text-gray-800">Seat Map Reference</h2>
+              <h2 className="text-xl font-light text-gray-800">Private Room Reference</h2>
               <div className="relative">
                 <input 
                   type="text" 
-                  placeholder="Search areas or seats..." 
+                  placeholder="Search rooms..." 
                   value={searchTerm} 
                   onChange={(e) => setSearchTerm(e.target.value)} 
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      checkRoomStatus();
+                    }
+                  }}
                   className="w-full p-3 border rounded-md" 
                 />
+
                 {searchTerm && (
                   <button 
                     onClick={() => setSearchTerm("")} 
@@ -317,40 +369,48 @@ const BookingForm = () => {
                 )}
               </div>
 
-              <div className="relative aspect-video bg-gray-100 rounded-md overflow-hidden border">
-                {/* Make sure the image exists in your public folder */}
-                <Image 
-                  src="/images/label.png" 
-                  alt="Seat map layout" 
-                  fill 
-                  className="object-contain" 
-                  priority 
-                />
+              {/* Responsive Lucidchart Container */}
+              <div className="w-full overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                <div className="relative" style={{ paddingBottom: '75%' }}>
+                  <iframe 
+                    allowFullScreen 
+                    frameBorder="0" 
+                    className="absolute top-0 left-0 w-full h-full"
+                    src="https://lucid.app/documents/embedded/968a8816-e828-463f-9154-8318a2612003" 
+                    id="ZSulLEtxiNwy"
+                    title="Room Map Diagram"
+                  ></iframe>
+                </div>
               </div>
 
               <div className="bg-blue-50 p-4 rounded-md">
                 <h3 className="font-medium text-blue-800 mb-2">
-                  {searchTerm ? "Search Results" : "Area Legend"}
+                  {searchTerm ? "Search Results" : "Room Legend"}
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {(searchTerm ? filteredAreas : Object.keys(SEATS_BY_AREA).slice(0, 6)).map(area => (
+                  {(searchTerm ? filteredAreas : Object.keys(ROOMS_BY_AREA).slice(0, 13)).map(area => (
                     <div
                       key={area}
-                      className="flex items-center p-1 rounded hover:bg-blue-100 cursor-pointer"
-                      onMouseEnter={() => handleAreaHover(area)}
-                      onMouseLeave={handleAreaLeave}
-                      onClick={() => {
-                        setSelectedArea(area);
-                        setSelectedSeats([]);
-                      }}
-                    >
-                      <div className={`w-3 h-3 rounded-full mr-2 ${highlightedArea === area ? "bg-blue-700" : "bg-blue-500"}`}></div>
-                      <span className="text-sm">{area}</span>
+                        className="flex items-center p-1 rounded hover:bg-blue-100 cursor-pointer"
+                        onMouseEnter={() => handleAreaHover(area)}
+                        onMouseLeave={handleAreaLeave}
+                        onClick={() => {
+                          checkRoomStatus(area); // 🔥 Check room status on click
+                          setSelectedArea(area);
+                          setSelectedRooms([]);
+                        }}
+                      >
+                        <div
+                          className={`w-3 h-3 rounded-full mr-2 ${
+                            ROOMS_BY_AREA[area].includes("Occupied") ? "bg-red-500" : "bg-blue-500"
+                          }`}
+                        ></div>
+                        <span className="text-sm">{area}</span>
                     </div>
                   ))}
                 </div>
                 {searchTerm && filteredAreas.length === 0 && (
-                  <p className="text-sm text-gray-500 mt-2">No areas or seats found</p>
+                  <p className="text-sm text-gray-500 mt-2">No areas or rooms found</p>
                 )}
               </div>
             </div>
@@ -366,11 +426,7 @@ const BookingForm = () => {
               <p><span className="text-gray-600">Date:</span> {selectedDate}</p>
               <p><span className="text-gray-600">Time:</span> {selectedTime}</p>
               <p><span className="text-gray-600">Area:</span> {selectedArea}</p>
-             <p> <span className="text-gray-600">Seats:</span>{" "}
-                      {(selectedSeats && selectedSeats.length > 0)
-                      ? selectedSeats.join(", ")
-                        : "None selected"}</p>
-
+              <p><span className="text-gray-600">Rooms:</span> {selectedRooms.join(", ")}</p>
               <p><span className="text-gray-600">Phone:</span> {phoneNumber}</p>
             </div>
             <div className="flex gap-3 pt-2">
