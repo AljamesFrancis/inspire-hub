@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+
 import {
   collection,
   addDoc,
@@ -10,9 +11,11 @@ import {
   deleteDoc,
   doc,
 } from "firebase/firestore";
+
 import { db } from "../../../../script/firebaseConfig";
 import { auth } from "../../../../script/auth";
 import Image from "next/image";
+
 
 const SEATS_BY_AREA = {
   // SEAT MAP 1
@@ -161,9 +164,10 @@ const BookingHistoryModal = ({ open, onClose, bookings, onDelete }) => {
       </div>
     </div>
   );
-};
+
 
 const BookingForm = () => {
+  const [selected, setSelectedRow] = useState("");
   const [selectedArea, setSelectedArea] = useState("");
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [reservedSeats, setReservedSeats] = useState([]);
@@ -174,11 +178,8 @@ const BookingForm = () => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [highlightedArea, setHighlightedArea] = useState(null);
-  const [dateError, setDateError] = useState("");
-  const [showHistory, setShowHistory] = useState(false);
-  const [bookingHistory, setBookingHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [timeError, setTimeError] = useState("");
+
+ 
 
   const seatsForArea = SEATS_BY_AREA[selectedArea] || [];
 
@@ -296,13 +297,17 @@ const BookingForm = () => {
     try {
       const user = auth.currentUser;
       const userName = user ? (user.displayName || user.email) : "Anonymous";
+      const userEmail = user ? user.email : "No Email";
       await addDoc(collection(db, "visitMap"), {
         name: userName,
+        email: userEmail,
+        phone: phoneNumber,
         date: selectedDate,
         time: selectedTime,
         area: selectedArea,
         seats: selectedSeats,
         phone: phoneNumber,
+        reservedSeats: selectedSeats,
         timestamp: new Date(),
         status: "pending",
       });
@@ -320,22 +325,27 @@ const BookingForm = () => {
     }
   };
 
+
   const filteredAreas = AREA_OPTIONS.filter(area => 
     area.toLowerCase().includes(searchTerm.toLowerCase()) ||
     SEATS_BY_AREA[area].some(seat => 
       seat.toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
-
   const handleAreaHover = (area) => {
     setHighlightedArea(area);
   };
-
-  const handleAreaLeave = () => {
-    setHighlightedArea(null);
-  };
+  const filteredAreas = Object.keys(SEATS_BY_AREA).filter(area =>
+    area.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    SEATS_BY_AREA[area].some(seat =>
+      seat.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
+  const handleAreaHover = (area) => setHighlightedArea(area);
+  const handleAreaLeave = () => setHighlightedArea(null);
 
   return (
+
     <div className="min-h-screen bg-white-50">
       <header className="bg-white ">
         <div className="max-w-7xl mx-auto py-6 px-4 mt-15 flex items-center justify-between">
@@ -365,12 +375,32 @@ const BookingForm = () => {
                   onChange={handleDateChange}
                   required
                   className={`w-full p-3 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 ${dateError && "border-red-500"}`}
+    <div className="min-h-screen bg-gray-50">
+      <header className="max-w-7xl mx-auto py-6 px-4 mt-20">
+        <h1 className="text-3xl font-bold text-gray-900">SEAT RESERVATION</h1>
+      </header>
+
+      <main className="max-w-7xl mx-auto py-8 px-4">
+        <div className="flex flex-col lg:flex-row gap-5">
+          {/* Form Section */}
+          <div className="lg:w-1/2 bg-white p-6 rounded-lg shadow-sm">
+            <h1 className="text-3xl font-semibold text-gray-900 mb-4">Book Seats</h1>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Date</label>
+                <input 
+                  type="date" 
+                  value={selectedDate} 
+                  onChange={(e) => setSelectedDate(e.target.value)} 
+                  required 
+                  className="w-full p-3 border rounded-md" 
                 />
                 {dateError && (
                   <div className="text-red-500 text-xs mt-1">{dateError}</div>
                 )}
               </div>
               <div className="space-y-1">
+
   <label className="text-sm font-medium text-gray-700">Time</label>
   <select
     value={selectedTime}
@@ -392,29 +422,45 @@ const BookingForm = () => {
     })}
   </select>
 </div>
+
+                <label className="text-sm font-medium text-gray-700">Time</label>
+                <input 
+                  type="time" 
+                  value={selectedTime} 
+                  onChange={(e) => setSelectedTime(e.target.value)} 
+                  required 
+                  className="w-full p-3 border rounded-md" 
+                />
+              </div>
+
+
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Phone Number</label>
                 <input
                   type="tel"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
+
+
+                  placeholder="Enter your phone number"
+
                   required
-                  className="w-full p-3 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full p-3 border rounded-md"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-gray-700">Area</label>
-                <select
-                  value={selectedArea}
-                  onChange={(e) => {
-                    setSelectedArea(e.target.value);
-                    setSelectedSeats([]);
-                  }}
-                  required
-                  className="w-full p-3 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                <select 
+                  value={selectedArea} 
+                  onChange={(e) => { 
+                    setSelectedArea(e.target.value); 
+                    setSelectedSeats([]); 
+                  }} 
+                  required 
+                  className="w-full p-3 border rounded-md"
                 >
                   <option value="" disabled>Select an area</option>
-                  {AREA_OPTIONS.map((area) => (
+                  {Object.keys(SEATS_BY_AREA).map((area) => (
                     <option key={area} value={area}>{area}</option>
                   ))}
                 </select>
@@ -439,6 +485,7 @@ const BookingForm = () => {
                               ${isReserved ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                                 : isSelected ? "bg-blue-600 text-white"
                                   : "bg-white border border-gray-200 hover:border-blue-400"}`}
+
                             title={isReserved ? "Reserved" : "Available"}
                           >
                             {seat}
@@ -446,19 +493,32 @@ const BookingForm = () => {
                         );
                       })}
                     </div>
+
+
+                    <p className="text-xs text-gray-500 mt-2">
+                      {selectedSeats.length > 0
+                        ? `Selected: ${selectedSeats.join(", ")}`
+                        : "Click seats to select"}
+                    </p>
+
                   </div>
                   <div className="flex gap-3 pt-4">
+
                     <button
                       type="submit"
                       disabled={selectedSeats.length === 0 || !!dateError || !!timeError}
+
+                    <button 
+                      type="submit" 
+                      disabled={selectedSeats.length === 0} 
                       className="flex-1 p-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300"
                     >
                       Reserve Seats
                     </button>
                     {selectedSeats.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSeats([])}
+                      <button 
+                        type="button" 
+                        onClick={() => setSelectedSeats([])} 
                         className="p-3 border rounded-md hover:bg-gray-50"
                       >
                         Clear
@@ -469,30 +529,38 @@ const BookingForm = () => {
               )}
             </form>
           </div>
+
+
+
+
           {/* Map Section */}
           <div className="lg:w-1/2 bg-white p-6 rounded-lg shadow-sm">
             <div className="space-y-4">
               <h2 className="text-xl font-light text-gray-800">Seat Map Reference</h2>
-              
-              {/* Search Bar */}
               <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search areas or seats..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full p-3 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                <input 
+                  type="text" 
+                  placeholder="Search areas or seats..." 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                  className="w-full p-3 border rounded-md" 
                 />
                 {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
+                  <button 
+                    onClick={() => setSearchTerm("")} 
                     className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                   >
                     ✕
                   </button>
                 )}
               </div>
+
               <div className="relative aspect-video bg-gray-100 rounded-md overflow-hidden border">
+
+
+              <div className="relative aspect-video bg-gray-100 rounded-md overflow-hidden border">
+                {/* Make sure the image exists in your public folder */}
+
                 <Image 
                   src="/images/label.png" 
                   alt="Seat map layout" 
@@ -500,17 +568,22 @@ const BookingForm = () => {
                   className="object-contain" 
                   priority 
                 />
+
                 {highlightedArea && (
                   <div className="absolute inset-0  bg-opacity-10 pointer-events-none"></div>
                 )}
               </div>
+
+              </div>
+
+
               <div className="bg-blue-50 p-4 rounded-md">
                 <h3 className="font-medium text-blue-800 mb-2">
                   {searchTerm ? "Search Results" : "Area Legend"}
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {(searchTerm ? filteredAreas : AREA_OPTIONS.slice(0, 6)).map(area => (
-                    <div 
+                  {(searchTerm ? filteredAreas : Object.keys(SEATS_BY_AREA).slice(0, 6)).map(area => (
+                    <div
                       key={area}
                       className="flex items-center p-1 rounded cursor-pointer"
                       onMouseEnter={() => handleAreaHover(area)}
@@ -520,9 +593,7 @@ const BookingForm = () => {
                         setSelectedSeats([]);
                       }}
                     >
-                      <div className={`w-3 h-3 rounded-full mr-2 ${
-                        highlightedArea === area ? "bg-blue-700" : "bg-blue-500"
-                      }`}></div>
+                      <div className={`w-3 h-3 rounded-full mr-2 ${highlightedArea === area ? "bg-blue-700" : "bg-blue-500"}`}></div>
                       <span className="text-sm">{area}</span>
                     </div>
                   ))}
@@ -543,21 +614,29 @@ const BookingForm = () => {
               <p><span className="text-gray-600">Date:</span> {selectedDate}</p>
               <p><span className="text-gray-600">Time:</span> {selectedTime}</p>
               <p><span className="text-gray-600">Area:</span> {selectedArea}</p>
+
               <p><span className="text-gray-600">Seats:</span>{" "}
                 {(selectedSeats && selectedSeats.length > 0)
                   ? selectedSeats.join(", ")
                   : "None selected"}</p>
+
+             <p> <span className="text-gray-600">Seats:</span>{" "}
+                      {(selectedSeats && selectedSeats.length > 0)
+                      ? selectedSeats.join(", ")
+                        : "None selected"}</p>
+
+
               <p><span className="text-gray-600">Phone:</span> {phoneNumber}</p>
             </div>
             <div className="flex gap-3 pt-2">
-              <button
-                onClick={handleFinalSubmit}
+              <button 
+                onClick={handleFinalSubmit} 
                 className="flex-1 p-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 Confirm
               </button>
-              <button
-                onClick={() => setShowReceipt(false)}
+              <button 
+                onClick={() => setShowReceipt(false)} 
                 className="flex-1 p-2 border rounded-md hover:bg-gray-50"
               >
                 Cancel
