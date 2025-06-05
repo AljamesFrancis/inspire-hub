@@ -6,7 +6,7 @@ import Footir from "./components/Footir.jsx";
 
 
 const geistSans = Geist({
-  variable: "--font-geist-sans",
+  variable: "--font-geist-sans",  
   subsets: ["latin"],
 });
 

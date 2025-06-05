@@ -8,21 +8,28 @@ const services = [
     image: "/images/IMG_5275.jpg",
     description:
       "Enjoy a personal, reserved workspace in a dynamic environment—perfect for focused productivity with the flexibility of a shared office.",
-    buttonLabel: "Learn more",
+  
   },
   {
-    title: "Small Office Space",
-    image: "/images/IMG_5288.jpg",
+    title: "Meeting Rooms",
+    image: "/images/IMG_5346.jpg",
     description:
       "Ideal for small teams, our private offices offer the perfect balance of privacy and community in a professional setting.",
-    buttonLabel: "Learn more",
+    
   },
   {
-    title: "Medium Office Space",
+    title: "Private Offices",
     image: "/images/IMG_5284.jpg",
     description:
       "Designed for growing teams, our medium offices provide ample space, premium amenities, and a collaborative atmosphere to help your business thrive.",
-    buttonLabel: "Learn more",
+   
+  },
+  {
+    title: "Virtual Office",
+    image: "/images/virtual.png ",
+    description:
+      "A virtual office provides businesses with a professional address, mail handling, and access to administrative support—without the cost of maintaining a physical workspace.",
+   
   },
 ];
 
@@ -41,7 +48,7 @@ const Desks = () => {
       </div>
 
       {/* Card Section */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-10">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-10">
         {services.map((service, index) => (
           <div
             key={index}
@@ -58,9 +65,7 @@ const Desks = () => {
               <p className="text-gray-700 text-base leading-relaxed mb-6 flex-1">
                 {service.description}
               </p>
-              <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-lg mt-auto self-start">
-                {service.buttonLabel}
-              </button>
+            
             </div>
           </div>
         ))}
