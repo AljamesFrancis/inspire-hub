@@ -7,25 +7,25 @@ const images = [
   { 
     id: 1, 
     url: '/images/IMG_5296.jpg', 
-    label: 'Nagoya', 
+    label: 'Boracay', 
     landingPage: '/meetingroom' // Your actual Nagoya landing page route
   },
   { 
     id: 2, 
     url: '/images/IMG_5338.jpg', 
-    label: 'Tokyo', 
+    label: 'Siargao', 
     landingPage: '/meetingroom2' // Your actual Tokyo landing page route
   },
   { 
     id: 3, 
     url: '/images/IMG_5330.jpg', 
-    label: 'Yokohama', 
+    label: 'El Nido', 
     landingPage: '/meetingroom3' // Your actual Yokohama landing page route
   },
   { 
     id: 4, 
     url: '/images/IMG_5283.jpg', 
-    label: 'Osaka', 
+    label: 'Coron', 
     landingPage: '/meetingroom4' // Your actual Osaka landing page route
   },
 ];

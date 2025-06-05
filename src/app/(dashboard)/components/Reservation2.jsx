@@ -223,7 +223,7 @@ export default function TimeSlotSchedule() {
 
   return (
     <div className="p-4 max-w-3xl mx-auto">
-      <h1 className="text-xl font-bold mb-4">Tokyo (Good for 21 Pax Php 11,000 / hr.)</h1>
+      <h1 className="text-xl font-bold mb-4">Siargao (Good for 21 Pax Php 11,000 / hr.)</h1>
 
       <form onSubmit={handleSubmit} className="mb-6 space-y-4">
         {/* Name and Email Fields */}
