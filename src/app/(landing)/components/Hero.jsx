@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-
+import Link from "next/link"; // Add this at the top
 const backgroundImages = [
   "/images/IMG_5268.jpg",
   "/images/IMG_5269.jpg",
@@ -46,9 +46,6 @@ const Hero = () => {
               The community, workspaces, and technology to make a good
               impression and get down to business.
             </p>
-            <button className="bg-blue-600 hover:bg-blue-700 transition duration-300 text-white font-semibold py-3 px-8 rounded-lg shadow-lg">
-              Learn about us
-            </button>
           </div>
         </div>
       </div>

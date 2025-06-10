@@ -14,14 +14,14 @@ const carouselItems = [
   {
     id: 2,
     title: "Meeting Rooms", 
-    type: "meeting-rooms",
+    type: "meetingroomlp",
     image: "/images/IMG_5330.jpg",
     description: "Professional meeting rooms available for hourly rental with premium amenities."
   },
   {
     id: 3,
     title: "Private Offices",
-    type: "private-offices",
+    type: "privateroom",
     image: "/images/IMG_5302.jpg",
     description: "Professionally furnished private offices available for lease in Uptown Bonifacio."
   }, 
@@ -43,11 +43,11 @@ const Page = () => {
     if (item.type === "desks") {
       router.push("/client");
     } 
-    else if (item.type === "meeting-rooms") {
-      router.push("/book/meeting-rooms");
+    else if (item.type === "meetingroomlp") {
+      router.push("/meetingroomlp");
     }
-    else if (item.type === "private-offices") {
-      router.push("/client");
+    else if (item.type === "privateroom") {
+      router.push("/privateroom");
     }
     else {
       // Default fallback

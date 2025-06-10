@@ -66,7 +66,8 @@ export default function Signup({ closeModal }) {
               email: formData.email,
               companyName: formData.companyName,
               contact: formData.contact,
-              createdAt: new Date()
+              createdAt: new Date(),
+              role: 'client'
             });
 
             setSuccessMessage('Registration successful!');

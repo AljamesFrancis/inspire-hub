@@ -6,6 +6,7 @@ import {
   doc,
 } from "firebase/firestore";
 import { db } from "./../../../../script/firebaseConfig";
+import { sendMeetingAcceptanceEmail, sendRejectionEmail } from "../utils/email";
 
 import {
   Box,
@@ -34,6 +35,9 @@ import {
   Chip
 } from "@mui/material";
 import { Save, Close, Event, Schedule, InfoOutlined } from "@mui/icons-material";
+
+// --- Import the new RejectReasonModal ---
+import RejectReasonModal from "./RejectReason";
 
 // Utility to truncate a Date to minutes (zero out seconds and ms)
 function truncateToMinutes(date) {
@@ -64,37 +68,6 @@ function normalizeTimeField(time) {
   }
   if (typeof time === "string") return time;
   return "";
-}
-
-// Format time to 24-hour format "HH:mm" (local time)
-function formatTime24h(time) {
-  if (!time) return "";
-  let dateObj;
-  if (typeof time === "object" && "seconds" in time) {
-    dateObj = new Date(time.seconds * 1000);
-  } else if (typeof time === "string" && time.length >= 4 && time.includes(":")) {
-    const pmMatch = time.match(/(\d{1,2}):(\d{2})\s*pm/i);
-    const amMatch = time.match(/(\d{1,2}):(\d{2})\s*am/i);
-    let hour, min;
-    if (pmMatch) {
-      hour = parseInt(pmMatch[1], 10);
-      min = parseInt(pmMatch[2], 10);
-      if (hour < 12) hour += 12;
-    } else if (amMatch) {
-      hour = parseInt(amMatch[1], 10);
-      min = parseInt(amMatch[2], 10);
-      if (hour === 12) hour = 0;
-    } else {
-      [hour, min] = time.split(":").map(Number);
-    }
-    dateObj = new Date();
-    dateObj.setHours(hour, min, 0, 0);
-  } else {
-    return time;
-  }
-  const hh = dateObj.getHours().toString().padStart(2, "0");
-  const mm = dateObj.getMinutes().toString().padStart(2, "0");
-  return `${hh}:${mm}`;
 }
 
 // Helper: create a local Date from date string and time string
@@ -149,7 +122,13 @@ const AdminDashboard = () => {
   const [editedData, setEditedData] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [tabValue, setTabValue] = useState(0);
-  const [rejectDialogId, setRejectDialogId] = useState(null);
+  // --- New state for preventing double submissions ---
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // --- State for RejectReasonModal ---
+  const [rejectReasonModalOpen, setRejectReasonModalOpen] = useState(false);
+  const [reservationToReject, setReservationToReject] = useState(null); // Stores the full reservation object
+
   const [detailsDialog, setDetailsDialog] = useState({ open: false, data: null });
 
   const itemsPerPage = 10;
@@ -235,13 +214,76 @@ const AdminDashboard = () => {
   const currentItems = filteredReservations.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredReservations.length / itemsPerPage);
 
-  // Handle reject
-  const handleReject = async (res) => {
-    await updateDoc(doc(db, "meeting room", res.id), { ...res, status: "rejected" });
-    setReservations((prev) =>
-      prev.map((r) => (r.id === res.id ? { ...r, status: "rejected" } : r))
-    );
-    setRejectDialogId(null);
+  // Handle Accept
+  const handleAccept = async (res) => {
+    // Prevent double submission
+    if (isSubmitting) return;
+
+    setIsSubmitting(true); // Set submitting to true
+    try {
+      // 1. Update status in Firestore
+      await updateDoc(doc(db, "meeting room", res.id), { ...res, status: "accepted" });
+
+      // 2. Send acceptance email using the imported function
+      await sendMeetingAcceptanceEmail(res); // Call the imported function
+
+      // 3. Update local state to reflect the change
+      setReservations((prev) =>
+        prev.map((r) => (r.id === res.id ? { ...r, status: "accepted" } : r))
+      );
+      alert("Meeting accepted and client notified!");
+    } catch (error) {
+      console.error("Error accepting meeting:", error);
+      alert(error.message || "Failed to accept meeting or send notification."); // Use error.message from the thrown error
+    } finally {
+      setIsSubmitting(false); // Reset submitting to false
+    }
+  };
+
+  // --- New functions for RejectReasonModal ---
+  const handleOpenRejectReasonModal = (res) => {
+    setReservationToReject(res);
+    setRejectReasonModalOpen(true);
+  };
+
+  const handleCloseRejectReasonModal = () => {
+    setRejectReasonModalOpen(false);
+    setReservationToReject(null);
+  };
+
+  const handleConfirmReject = async (reason) => {
+    if (!reservationToReject) return; // Should not happen if modal is opened correctly
+    // Prevent double submission
+    if (isSubmitting) return;
+
+    setIsSubmitting(true); // Set submitting to true
+    try {
+      // 1. Update status AND store the rejection reason in Firestore
+      await updateDoc(doc(db, "meeting room", reservationToReject.id), {
+        status: "rejected",
+        rejectionReason: reason // <-- Add this line
+      });
+
+      // 2. Send rejection email using the imported function
+      // Pass the reservation data and the reason
+      await sendRejectionEmail(reservationToReject, reason);
+
+      // 3. Update local state to reflect the change
+      setReservations((prev) =>
+        prev.map((r) =>
+          r.id === reservationToReject.id
+            ? { ...r, status: "rejected", rejectionReason: reason } // <-- Update local state with reason too
+            : r
+        )
+      );
+      alert("Meeting rejected and client notified with reason.");
+    } catch (error) {
+      console.error("Error rejecting meeting:", error);
+      alert(error.message || "Failed to reject meeting or send notification.");
+    } finally {
+      handleCloseRejectReasonModal(); // Close modal regardless of success or failure
+      setIsSubmitting(false); // Reset submitting to false
+    }
   };
 
   // Details Modal
@@ -249,27 +291,27 @@ const AdminDashboard = () => {
   const handleCloseDetails = () => setDetailsDialog({ open: false, data: null });
 
   return (
-    <Box p={{ xs: 1, sm: 2, md: 4 }} sx={{ background: "#f3f4f6", minHeight: "100vh" }}>
+    <Box p={{ xs: 1, sm: 2, md: 4 }} sx={{ background: "#f3f4f6", minHeight: "10vh" }}>
       <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 'bold' }}>
         Meeting Room Reservations
       </Typography>
 
       <Paper sx={{ mb: 3, borderRadius: 2 }}>
         <Tabs value={tabValue} onChange={handleTabChange} variant="fullWidth">
-          <Tab 
-            label="Accepted Meetings" 
-            icon={<Schedule fontSize="small" />} 
-            iconPosition="start" 
+          <Tab
+            label="Accepted Meetings"
+            icon={<Schedule fontSize="small" />}
+            iconPosition="start"
           />
-          <Tab 
-            label="Meeting Requests" 
-            icon={<Event fontSize="small" />} 
-            iconPosition="start" 
+          <Tab
+            label="Meeting Requests"
+            icon={<Event fontSize="small" />}
+            iconPosition="start"
           />
-          <Tab 
-            label="Ongoing Meeting" 
-            icon={<Event fontSize="small" />} 
-            iconPosition="start" 
+          <Tab
+            label="Ongoing Meeting"
+            icon={<Event fontSize="small" />}
+            iconPosition="start"
           />
         </Tabs>
       </Paper>
@@ -301,19 +343,22 @@ const AdminDashboard = () => {
               // Determine visual status for chip
               let chipLabel = "-";
               let chipColor = "default";
-              if (tabValue === 0) {
+              if (res.status === "accepted" && !isCurrentMeeting(res, nowLocal)) {
                 chipLabel = "Accepted";
                 chipColor = "success";
-              } else if (tabValue === 1) {
+              } else if (res.status === "pending") {
                 chipLabel = "Pending";
                 chipColor = "warning";
-              } else if (tabValue === 2) {
+              } else if (res.status === "accepted" && isCurrentMeeting(res, nowLocal)) {
                 chipLabel = "Ongoing";
                 chipColor = "info";
               }
               if (res.status === "done") {
                 chipLabel = "Done";
                 chipColor = "primary";
+              } else if (res.status === "rejected") {
+                chipLabel = "Rejected";
+                chipColor = "error";
               }
 
               return (
@@ -379,7 +424,7 @@ const AdminDashboard = () => {
                         size="small"
                       />
                     ) : (
-                      formatTime24h(res.from_time) || "-"
+                      new Date(res.from_time?.seconds * 1000).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) || "-"
                     )}
                   </TableCell>
                   <TableCell align="center">
@@ -393,7 +438,7 @@ const AdminDashboard = () => {
                         size="small"
                       />
                     ) : (
-                      formatTime24h(res.to_time) || "-"
+                      new Date(res.to_time?.seconds * 1000).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) || "-"
                     )}
                   </TableCell>
                   <TableCell align="center">
@@ -466,17 +511,11 @@ const AdminDashboard = () => {
                             <Tooltip title="Accept">
                               <Button
                                 color="success"
-                                onClick={async () => {
-                                  await updateDoc(doc(db, "meeting room", res.id), { ...res, status: "accepted" });
-                                  setReservations((prev) =>
-                                    prev.map((r) =>
-                                      r.id === res.id ? { ...r, status: "accepted" } : r
-                                    )
-                                  );
-                                }}
+                                onClick={() => handleAccept(res)}
                                 size="small"
                                 variant="contained"
                                 sx={{ minWidth: 0, px: 2, fontSize: "0.85rem", textTransform: "none" }}
+                                disabled={isSubmitting} // Disable button while submitting
                               >
                                 Accept
                               </Button>
@@ -484,7 +523,8 @@ const AdminDashboard = () => {
                             <Tooltip title="Reject">
                               <Button
                                 color="error"
-                                onClick={() => setRejectDialogId(res.id)}
+                                // --- Change this to open the new modal ---
+                                onClick={() => handleOpenRejectReasonModal(res)}
                                 size="small"
                                 variant="contained"
                                 sx={{
@@ -493,6 +533,7 @@ const AdminDashboard = () => {
                                   fontSize: "0.85rem",
                                   textTransform: "none",
                                 }}
+                                disabled={isSubmitting} // Disable button while submitting
                               >
                                 Reject
                               </Button>
@@ -553,30 +594,6 @@ const AdminDashboard = () => {
         </Stack>
       )}
 
-      <Dialog open={!!rejectDialogId} onClose={() => setRejectDialogId(null)}>
-        <DialogTitle>Confirm Rejection</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to reject this meeting request?
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejectDialogId(null)} color="inherit" variant="outlined">
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              const res = reservations.find((r) => r.id === rejectDialogId);
-              handleReject(res);
-            }}
-            color="error"
-            variant="contained"
-          >
-            Confirm
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       <Dialog open={detailsDialog.open} onClose={handleCloseDetails} maxWidth="sm" fullWidth>
         <DialogTitle>Reservation Details</DialogTitle>
         <DialogContent dividers>
@@ -592,10 +609,10 @@ const AdminDashboard = () => {
                 <strong>Date:</strong> {detailsDialog.data.date ? new Date(detailsDialog.data.date).toLocaleDateString("en-US") : "-"}
               </Typography>
               <Typography>
-                <strong>From Time:</strong> {formatTime24h(detailsDialog.data.from_time) || "-"}
+                <strong>From Time:</strong> {new Date(detailsDialog.data.from_time?.seconds * 1000).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) || "-"}
               </Typography>
               <Typography>
-                <strong>To Time:</strong> {formatTime24h(detailsDialog.data.to_time) || "-"}
+                <strong>To Time:</strong> {new Date(detailsDialog.data.to_time?.seconds * 1000).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) || "-"}
               </Typography>
               <Typography>
                 <strong>Duration:</strong> {detailsDialog.data.duration || "-"}
@@ -605,8 +622,8 @@ const AdminDashboard = () => {
                   Array.isArray(detailsDialog.data.guests)
                     ? detailsDialog.data.guests.join(", ")
                     : (typeof detailsDialog.data.guests === "string"
-                        ? detailsDialog.data.guests
-                        : "-")
+                      ? detailsDialog.data.guests
+                      : "-")
                 }
               </Typography>
               <Typography>
@@ -621,6 +638,14 @@ const AdminDashboard = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* --- Add the RejectReasonModal component --- */}
+      <RejectReasonModal
+        open={rejectReasonModalOpen}
+        onClose={handleCloseRejectReasonModal}
+        onConfirm={handleConfirmReject}
+        isSubmitting={isSubmitting} // Pass isSubmitting to the modal if it has a confirm button
+      />
     </Box>
   );
 };

@@ -74,20 +74,7 @@ const Footer = () => {
   return (
     <footer className="bg-[#2b2b2b] text-[#d5ae85] px-6 py-20 md:px-16">
       {/* FAQ Section */}
-      <div className="md:w-1/2 border-l-0 md:border-l-2 border-[#d5ae85] md:pl-8">
-        <h2 className="text-2xl font-semibold mb-1 hover:text-amber-500 transition-colors">FAQs</h2>
-        <ul className="space-y-4 border-b border-[#333] pb-5">
-          <li className="cursor-pointer hover:underline">
-            Is there a best time of year to buy a home?
-          </li>
-          <li className="cursor-pointer hover:underline">
-            How much should I save for a downpayment?
-          </li>
-          <li className="cursor-pointer hover:underline">
-            Do you work with clients in different timezones?
-          </li>
-        </ul>
-      </div>
+     
 
       {/* Contact Section */}
       <div className="w-full mx-auto mt-8">
@@ -100,7 +87,7 @@ const Footer = () => {
 
           <div className="md:w-1/2 border-l-0 md:border-l-2 border-[#d5ae85] md:pl-8">
             <h3 className="text-2xl font-semibold mb-4 hover:underline hover:text-amber-500 transition-colors">Our Office Hours</h3>
-            <p className="text-lg text-[#d5ae85] mb-2 hover:underline">Monday to Friday: 7:00 AM - 10:00 PM</p>
+            <p className="text-lg text-[#d5ae85] mb-2 hover:underline">Monday to Friday: 7:00 AM - 06:30 PM</p>
             <p className="text-lg text-[#d5ae85] mb-2 hover:underline">You may leave an email to us on Weekends!</p>
           </div>
         </div>

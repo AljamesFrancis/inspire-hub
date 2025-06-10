@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Reservation3 from "../components/Reservation3";
+
+import NotAuthorized from "../components/NotAuthorized";
 
 export default function WelcomePage () {  return (
    
-    <div>
-        <Reservation3 /> 
-    </div>
+         <div>
+            <NotAuthorized/>
+        </div>
     
   );
 }

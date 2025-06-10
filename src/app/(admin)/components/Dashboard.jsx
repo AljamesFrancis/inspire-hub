@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { db } from "../../../../script/firebaseConfig";
 import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -26,6 +26,7 @@ import {
   HiOutlineUserRemove,
   HiOutlineClock,
   HiOutlineOfficeBuilding,
+  HiOutlineCalendar, // Added for expiry icon
 } from "react-icons/hi";
 import { FaChair, FaRegCalendarAlt } from "react-icons/fa";
 import { MdOutlineEventNote, MdMeetingRoom } from "react-icons/md";
@@ -47,103 +48,149 @@ const Dashboard = () => {
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [showVisitModal, setShowVisitModal] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [expiringTenants, setExpiringTenants] = useState([]); // New state for expiring tenants
 
   // Format time helper
-  const formatTime = (timeString) => {
+  const formatTime = useCallback((timeString) => {
     if (!timeString) return '';
     const [hours, minutes] = timeString.split(':');
     const hourNum = parseInt(hours, 10);
     const period = hourNum >= 12 ? 'PM' : 'AM';
     const displayHour = hourNum % 12 || 12;
     return `${displayHour}:${minutes} ${period}`;
-  };
+  }, []);
+
+  // Helper to calculate days remaining
+  const calculateDaysRemaining = useCallback((endDate) => {
+    if (!endDate) return null;
+    let dateObj;
+    if (endDate.toDate && typeof endDate.toDate === 'function') {
+      dateObj = endDate.toDate();
+    } else if (typeof endDate === 'string') {
+      dateObj = new Date(endDate);
+    } else if (endDate instanceof Date) {
+      dateObj = endDate;
+    } else {
+      return null; // Invalid date format
+    }
+
+    const now = new Date();
+    // Set time to 00:00:00 for accurate day comparison
+    now.setHours(0, 0, 0, 0);
+    dateObj.setHours(0, 0, 0, 0);
+
+    const diffTime = dateObj.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  }, []);
 
   // Fetch all dashboard data
   useEffect(() => {
     const fetchAllData = async () => {
       try {
         setLoading(true);
-        
-        // Fetch seat data
-        const seatQuerySnapshot = await getDocs(collection(db, "seatMap"));
-        const seatData = seatQuerySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setSeatData(seatData);
-        
-        // Calculate occupied seats
-        const allSelectedSeats = seatQuerySnapshot.docs.flatMap(doc =>
-          doc.data().selectedSeats || []
-        );
-        setOccupiedSeats(allSelectedSeats);
-        setAvailableSeats(totalSeats - allSelectedSeats.length);
-        
-        // Fetch private offices
-        const officeQuerySnapshot = await getDocs(collection(db, "privateOffice"));
-        const officeDocs = officeQuerySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setPrivateOfficeList(officeDocs);
-        
-        // Calculate occupied offices
-        const allSelectedPO = [];
-        officeDocs.forEach(office => {
-          if (office.selectedPO) {
-            if (Array.isArray(office.selectedPO)) {
-              allSelectedPO.push(...office.selectedPO);
-            } else {
-              allSelectedPO.push(office.selectedPO);
-            }
-          }
-        });
-        setOccupiedPrivateOffices(allSelectedPO);
-        
-        // Fetch pending visits
-        const visitQuery = query(
-          collection(db, "visitMap"),
-          where("status", "==", "pending")
-        );
-        const visitQuerySnapshot = await getDocs(visitQuery);
-        const visitData = visitQuerySnapshot.docs.map(doc => {
-          const raw = doc.data();
-          let formattedDate = '';
-          if (raw.date) {
-            if (typeof raw.date.toDate === "function") {
-              formattedDate = raw.date.toDate().toLocaleDateString();
-            } else {
-              formattedDate = typeof raw.date === 'string'
-                ? raw.date
-                : (raw.date instanceof Date
-                    ? raw.date.toLocaleDateString()
-                    : '');
-            }
-          }
-          return {
+        const now = new Date();
+        const thirtyDaysFromNow = new Date(now);
+        thirtyDaysFromNow.setDate(now.getDate() + 30);
+
+        const collectionsToFetch = [
+          { name: "seatMap", setState: setSeatData, isTenant: true, type: "Dedicated Desk" },
+          { name: "privateOffice", setState: setPrivateOfficeList, isTenant: true, type: "Private Office" },
+          { name: "virtualOffice", isTenant: true, type: "Virtual Office" }, // Assuming virtualOffice for virtual tenants
+          { name: "visitMap", setState: setVisitData, isTenant: false },
+        ];
+
+        let allSelectedSeats = [];
+        let allSelectedPO = [];
+        let currentExpiringTenants = [];
+
+        for (const config of collectionsToFetch) {
+          const querySnapshot = await getDocs(collection(db, config.name));
+          const docs = querySnapshot.docs.map(doc => ({
             id: doc.id,
-            ...raw,
-            date: formattedDate,
-            time: formatTime(raw.time)
-          };
-        });
-        setVisitData(visitData);
-        
+            ...doc.data()
+          }));
+
+          if (config.setState) {
+            config.setState(docs);
+          }
+
+          if (config.isTenant) {
+            docs.forEach(tenant => {
+              if (tenant.billing && tenant.billing.billingEndDate) {
+                const daysRemaining = calculateDaysRemaining(tenant.billing.billingEndDate);
+                if (daysRemaining !== null && daysRemaining <= 30 && daysRemaining >= 0) {
+                  currentExpiringTenants.push({
+                    ...tenant,
+                    type: config.type,
+                    daysRemaining: daysRemaining,
+                    formattedEndDate: new Date(tenant.billing.billingEndDate.toDate ? tenant.billing.billingEndDate.toDate() : tenant.billing.billingEndDate).toLocaleDateString(),
+                  });
+                }
+              }
+            });
+          }
+
+          // Handle specific data extractions for cards/charts
+          if (config.name === "seatMap") {
+            allSelectedSeats = docs.flatMap(doc =>
+              doc.selectedSeats || []
+            );
+            setOccupiedSeats(allSelectedSeats);
+            setAvailableSeats(totalSeats - allSelectedSeats.length);
+          } else if (config.name === "privateOffice") {
+            docs.forEach(office => {
+              if (office.selectedPO) {
+                if (Array.isArray(office.selectedPO)) {
+                  allSelectedPO.push(...office.selectedPO);
+                } else {
+                  allSelectedPO.push(office.selectedPO);
+                }
+              }
+            });
+            setOccupiedPrivateOffices(allSelectedPO);
+          } else if (config.name === "visitMap") {
+            const pendingVisits = docs.filter(visit => visit.status === "pending").map(visit => {
+              let formattedDate = '';
+              if (visit.date) {
+                if (typeof visit.date.toDate === "function") {
+                  formattedDate = visit.date.toDate().toLocaleDateString();
+                } else {
+                  formattedDate = typeof visit.date === 'string'
+                    ? visit.date
+                    : (visit.date instanceof Date
+                        ? visit.date.toLocaleDateString()
+                        : '');
+                }
+              }
+              return {
+                id: visit.id,
+                ...visit,
+                date: formattedDate,
+                time: formatTime(visit.time)
+              };
+            });
+            setVisitData(pendingVisits);
+          }
+        }
+        setExpiringTenants(currentExpiringTenants.sort((a, b) => a.daysRemaining - b.daysRemaining)); // Sort by days remaining
+
         setLastUpdated(new Date());
         setLoading(false);
       } catch (err) {
         setError("Failed to fetch dashboard data");
-        console.error(err);
+        console.error("Error fetching dashboard data:", err);
         setLoading(false);
       }
     };
 
     fetchAllData();
-    
+
     // Refresh data every 60 seconds
     const interval = setInterval(fetchAllData, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [formatTime, calculateDaysRemaining]); // Add formatTime and calculateDaysRemaining to dependencies
+
 
   // Fetch detailed visit information
   const fetchVisitDetails = async (visitId) => {
@@ -163,7 +210,7 @@ const Dashboard = () => {
                   : '');
           }
         }
-        
+
         setSelectedVisit({
           id: visitDoc.id,
           ...visitData,
@@ -205,7 +252,7 @@ const Dashboard = () => {
       </div>
     </div>
   );
-  
+
   if (error) return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <div className="text-center p-6 bg-red-50 rounded-lg max-w-md">
@@ -216,7 +263,7 @@ const Dashboard = () => {
         </div>
         <h3 className="mt-4 text-lg font-medium text-red-800">Error Loading Dashboard</h3>
         <p className="mt-2 text-red-600">{error}</p>
-        <button 
+        <button
           onClick={() => window.location.reload()}
           className="mt-4 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition"
         >
@@ -330,7 +377,7 @@ const Dashboard = () => {
                   <Cell fill="#10b981" stroke="#fff" strokeWidth={2} />
                   <Cell fill="#ef4444" stroke="#fff" strokeWidth={2} />
                 </Pie>
-                <RechartsTooltip 
+                <RechartsTooltip
                   formatter={(value, name) => [`${value} seats`, name]}
                   contentStyle={{
                     backgroundColor: '#fff',
@@ -340,9 +387,9 @@ const Dashboard = () => {
                     padding: '0.5rem'
                   }}
                 />
-                <Legend 
-                  layout="horizontal" 
-                  verticalAlign="bottom" 
+                <Legend
+                  layout="horizontal"
+                  verticalAlign="bottom"
                   align="center"
                   wrapperStyle={{ paddingTop: '20px' }}
                 />
@@ -364,15 +411,15 @@ const Dashboard = () => {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={visitBarData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                <XAxis 
-                  dataKey="date" 
-                  axisLine={false} 
-                  tickLine={false} 
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
                   tick={{ fill: '#6b7280', fontSize: 12 }}
                 />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
                   tick={{ fill: '#6b7280', fontSize: 12 }}
                 />
                 <RechartsTooltip
@@ -386,15 +433,68 @@ const Dashboard = () => {
                   labelStyle={{ fontWeight: 500, color: '#111827' }}
                   formatter={(value) => [`${value} visits`, 'Pending Visits']}
                 />
-                <Bar 
-                  dataKey="Pending Visits" 
-                  fill="#3b82f6" 
-                  radius={[4, 4, 0, 0]} 
+                <Bar
+                  dataKey="Pending Visits"
+                  fill="#3b82f6"
+                  radius={[4, 4, 0, 0]}
                   barSize={24}
                 />
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* --- Expiring Tenants Section (NEW) --- */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+        <div className="px-6 py-5 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Expiring Tenants (30 days or less)</h2>
+            <div className="flex items-center space-x-2">
+              <span className="px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded-full">
+                {expiringTenants.length} expiring
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="divide-y divide-gray-200">
+          {expiringTenants.length > 0 ? (
+            expiringTenants.map((tenant) => (
+              <div
+                key={tenant.id}
+                className="px-6 py-4 hover:bg-gray-50 transition"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600">
+                        <HiOutlineCalendar className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-base font-medium text-gray-900">{tenant.name || 'N/A'} - {tenant.company || 'N/A'}</h3>
+                      <p className="text-sm text-gray-500">{tenant.type} Tenant</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-sm text-gray-500 flex items-center">
+                      <FaRegCalendarAlt className="mr-1.5 h-4 w-4 flex-shrink-0 text-gray-400" />
+                      Ends: {tenant.formattedEndDate || 'N/A'}
+                    </div>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tenant.daysRemaining <= 7 ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'}`}>
+                      {tenant.daysRemaining} days left
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="px-6 py-12 text-center">
+              <HiOutlineCalendar className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No tenants expiring soon</h3>
+              <p className="mt-1 text-sm text-gray-500">Keep up the good work!</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -413,8 +513,8 @@ const Dashboard = () => {
         <div className="divide-y divide-gray-200">
           {visitData.length > 0 ? (
             visitData.map((visit) => (
-              <div 
-                key={visit.id} 
+              <div
+                key={visit.id}
                 className="px-6 py-4 hover:bg-gray-50 transition cursor-pointer"
                 onClick={() => fetchVisitDetails(visit.id)}
               >
@@ -481,51 +581,51 @@ const Dashboard = () => {
                 <div className="sm:col-span-2">
                   <h4 className="text-md font-medium text-gray-900 mb-2">Visitor Information</h4>
                 </div>
-                
+
                 <div>
                   <p className="text-sm font-medium text-gray-500">Full Name</p>
                   <p className="mt-1 text-sm text-gray-900">{selectedVisit.name || 'Not provided'}</p>
                 </div>
-                
+
                 <div>
                   <p className="text-sm font-medium text-gray-500">Email</p>
                   <p className="mt-1 text-sm text-gray-900">{selectedVisit.email || 'Not provided'}</p>
                 </div>
-                
+
                 <div>
                   <p className="text-sm font-medium text-gray-500">Phone Number</p>
                   <p className="mt-1 text-sm text-gray-900">{selectedVisit.phone || 'Not provided'}</p>
                 </div>
-                
+
                 <div>
                   <p className="text-sm font-medium text-gray-500">Company</p>
                   <p className="mt-1 text-sm text-gray-900">{selectedVisit.company || 'Not provided'}</p>
                 </div>
-                
+
                 <div>
                   <p className="text-sm font-medium text-gray-500">Visit Date</p>
                   <p className="mt-1 text-sm text-gray-900">{selectedVisit.date || 'Not specified'}</p>
                 </div>
-                
+
                 <div>
                   <p className="text-sm font-medium text-gray-500">Visit Time</p>
                   <p className="mt-1 text-sm text-gray-900">{selectedVisit.time || 'Not specified'}</p>
                 </div>
-                
+
                 {selectedVisit.host && (
                   <div>
                     <p className="text-sm font-medium text-gray-500">Host</p>
                     <p className="mt-1 text-sm text-gray-900">{selectedVisit.host}</p>
                   </div>
                 )}
-                
+
                 {selectedVisit.purpose && (
                   <div className="sm:col-span-2">
                     <p className="text-sm font-medium text-gray-500">Purpose of Visit</p>
                     <p className="mt-1 text-sm text-gray-900">{selectedVisit.purpose}</p>
                   </div>
                 )}
-                
+
                 {selectedVisit.additionalInfo && (
                   <div className="sm:col-span-2">
                     <p className="text-sm font-medium text-gray-500">Additional Information</p>

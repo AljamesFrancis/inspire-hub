@@ -863,6 +863,12 @@ export default function ReservationMeetingReportTabs() {
                   size="small"
                 />
               </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Rejection Reason
+                </Typography>
+                <Typography variant="body1">{selectedClient.rejectionReason || "-"}</Typography>
+              </Box>
               <Divider />
             </Stack>
           )}
@@ -961,6 +967,12 @@ export default function ReservationMeetingReportTabs() {
                   size="small"
                 />
               </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Rejection Reason
+                </Typography>
+                <Typography variant="body1">{selectedOffice.rejectionReason || "-"}</Typography>
+              </Box>
               <Divider />
             </Stack>
           )}
@@ -1050,6 +1062,12 @@ export default function ReservationMeetingReportTabs() {
                   }}
                   size="small"
                 />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Rejection Reason
+                </Typography>
+                <Typography variant="body1">{selectedMeeting.rejectionReason || "-"}</Typography>
               </Box>
               {selectedMeeting.details && (
                 <Box>

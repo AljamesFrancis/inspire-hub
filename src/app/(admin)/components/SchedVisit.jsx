@@ -9,7 +9,9 @@ import {
   updateDoc,
   getDoc,
 } from "firebase/firestore";
-import React, { useState, useEffect } from "react";
+// Remove the problematic line: import React, { useState, useEffect } => {
+// The correct import for React and its hooks is already present inside the component.
+
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
 import seatMap2 from "../../(admin)/seatMap2.json";
@@ -20,6 +22,7 @@ import {
   sendAcceptanceEmail,
   sendRejectionEmail,
 } from "../../(admin)/utils/email";
+import RejectReasonModal from "./RejectReason";
 
 import {
   Box,
@@ -57,19 +60,25 @@ import {
   MeetingRoom as OfficeIcon,
   Chair as SeatIcon
 } from '@mui/icons-material';
+import { useState, useEffect } from "react";
 
-// Accept/Reject utility functions for updating visit status
-async function accept(visitId, collectionName) {
+// Accept utility function for updating visit status and sending email
+export async function accept(visitId, collectionName) {
   if (!visitId) throw new Error("Missing visitId");
   try {
     const visitRef = doc(db, collectionName, visitId);
     const visitDoc = await getDoc(visitRef);
-    const clientData = visitDoc.data();
+
+    if (!visitDoc.exists()) throw new Error("Visit not found");
+
+    const clientData = { ...visitDoc.data(), id: visitId };
 
     await updateDoc(visitRef, { status: "accepted" });
+
     const emailResult = await sendAcceptanceEmail(clientData);
 
     if (!emailResult.success) {
+      // Optionally, log or handle email failure without throwing if you want to allow status update
       throw emailResult.error;
     }
     return { success: true };
@@ -79,17 +88,25 @@ async function accept(visitId, collectionName) {
   }
 }
 
-async function reject(visitId, collectionName) {
+// Reject utility function for updating visit status, adding a reason, and sending email
+export async function reject(visitId, collectionName, reason) { // Added 'reason' parameter
   if (!visitId) throw new Error("Missing visitId");
   try {
     const visitRef = doc(db, collectionName, visitId);
     const visitDoc = await getDoc(visitRef);
-    const clientData = visitDoc.data();
 
-    await updateDoc(visitRef, { status: "rejected" });
-    const emailResult = await sendRejectionEmail(clientData);
+    if (!visitDoc.exists()) throw new Error("Visit not found");
+
+    const clientData = { ...visitDoc.data(), id: visitId };
+
+    // Update the document with status and rejection reason
+    await updateDoc(visitRef, { status: "rejected", rejectionReason: reason }); // Store the reason
+
+    // Pass the reason to the email utility
+    const emailResult = await sendRejectionEmail(clientData, reason); // Pass reason here
 
     if (!emailResult.success) {
+      // Optionally, log or handle email failure without throwing if you want to allow status update
       throw emailResult.error;
     }
     return { success: true };
@@ -136,11 +153,21 @@ const groupPairs4 = groupIntoPairs(rowEntries4);
 const groupPairs5 = groupIntoPairs(rowEntries5);
 
 export default function ClientsPage() {
+  // Correct React import and hooks usage
   const [clients, setClients] = useState([]);
   const [visitClients, setVisitClients] = useState([]);
   const [officeVisitClients, setOfficeVisitClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
+
+  // New state for the rejection modal
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  // New states for managing submission loading
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+
 
   useEffect(() => {
     async function fetchOccupiedSeats() {
@@ -182,7 +209,9 @@ export default function ClientsPage() {
   }, []);
 
   const handleAcceptVisit = async (visitId, isOffice = false) => {
-    if (!visitId) return;
+    if (!visitId || isAccepting) return; // Prevent double-click
+    setIsAccepting(true); // Start loading
+
     try {
       const collectionName = isOffice ? "privateOfficeVisits" : "visitMap";
       await accept(visitId, collectionName);
@@ -197,16 +226,29 @@ export default function ClientsPage() {
     } catch (error) {
       console.error("Error in acceptVisit:", error);
       alert(error.message || "Visit was accepted but failed to notify client.");
+    } finally {
+      setIsAccepting(false); // End loading
     }
   };
 
-  const handleRejectVisit = async (visitId, isOffice = false) => {
-    if (!visitId) return;
-    try {
-      const collectionName = isOffice ? "privateOfficeVisits" : "visitMap";
-      await reject(visitId, collectionName);
+  // Function to open the rejection modal
+  const handleRejectClick = () => {
+    if (isRejecting) return; // Prevent opening multiple modals
+    setShowRejectModal(true);
+  };
 
-      if (isOffice) {
+  // Function to handle confirmation from the rejection modal
+  const handleConfirmReject = async (reason) => {
+    setShowRejectModal(false); // Close the modal immediately
+    if (!selectedClientId || isRejecting) return; // Ensure a client is selected and prevent double-click
+
+    setIsRejecting(true); // Start loading
+
+    try {
+      const collectionName = activeTab === 1 ? "privateOfficeVisits" : "visitMap";
+      await reject(selectedClientId, collectionName, reason); // Pass the reason
+
+      if (activeTab === 1) {
         await fetchOfficeVisitData();
       } else {
         await fetchVisitData();
@@ -216,7 +258,13 @@ export default function ClientsPage() {
     } catch (error) {
       console.error("Error in rejectVisit:", error);
       alert(error.message || "Failed to reject visit request.");
+    } finally {
+      setIsRejecting(false); // End loading
     }
+  };
+
+  const handleCloseRejectModal = () => {
+    setShowRejectModal(false);
   };
 
   const handleTabChange = (event, newValue) => {
@@ -226,7 +274,7 @@ export default function ClientsPage() {
 
   const currentClients = activeTab === 0 ? visitClients : officeVisitClients;
   const selectedClient = currentClients.find((c) => c.id === selectedClientId) || null;
-  const allReservedSeats = selectedClient?.reservedSeats || [];
+  const allReservedSeats = selectedClient?.reservedSeats || selectedClient?.selectedSeats || [];
   const allSelectedSeats = clients.flatMap((c) => c.selectedSeats || []);
 
   const isReservedSeat = (seat, mapType) => {
@@ -287,17 +335,17 @@ export default function ClientsPage() {
                       const reserved = isReservedSeat(seat, mapType);
                       const selected = isSelectedSeat(seat, mapType);
 
-                      let seatColor = reserved ? 'primary.main' : 
-                                     selected ? 'error.light' : 
-                                     seat.type === "window" ? 'grey.100' : 'grey.50';
-                      
-                      let barColor = reserved ? 'primary.dark' : 
-                                    selected ? 'error.main' : 
-                                    seat.type === "window" ? 'grey.400' : 'grey.300';
+                      let seatColor = reserved ? 'primary.main' :
+                        selected ? 'error.light' :
+                          seat.type === "window" ? 'grey.100' : 'grey.50';
 
-                      const hoverTitle = reserved ? "This seat is scheduled for a visit" : 
-                                       selected ? "This seat is currently occupied" : 
-                                       seat.type === "window" ? "Window seat (vacant)" : "Vacant seat";
+                      let barColor = reserved ? 'primary.dark' :
+                        selected ? 'error.main' :
+                          seat.type === "window" ? 'grey.400' : 'grey.300';
+
+                      const hoverTitle = reserved ? "This seat is scheduled for a visit" :
+                        selected ? "This seat is currently occupied" :
+                          seat.type === "window" ? "Window seat (vacant)" : "Vacant seat";
 
                       return (
                         <Tooltip key={seat.id} title={hoverTitle} arrow>
@@ -310,9 +358,9 @@ export default function ClientsPage() {
                                 bgcolor: seatColor,
                                 color: reserved || selected ? 'common.white' : 'text.primary',
                                 '&:hover': {
-                                  bgcolor: reserved ? 'primary.dark' : 
-                                           selected ? 'error.main' : 
-                                           seat.type === "window" ? 'grey.200' : 'grey.100',
+                                  bgcolor: reserved ? 'primary.dark' :
+                                    selected ? 'error.main' :
+                                      seat.type === "window" ? 'grey.200' : 'grey.100',
                                 },
                                 '&.Mui-disabled': {
                                   bgcolor: seatColor,
@@ -422,9 +470,9 @@ export default function ClientsPage() {
             )}
           </Typography>
         </Box>
-        
-        <Tabs 
-          value={activeTab} 
+
+        <Tabs
+          value={activeTab}
           onChange={handleTabChange}
           variant="fullWidth"
           sx={{ borderBottom: 1, borderColor: 'divider' }}
@@ -432,11 +480,11 @@ export default function ClientsPage() {
           <Tab icon={<SeatIcon fontSize="small" />} label="Seats" />
           <Tab icon={<OfficeIcon fontSize="small" />} label="Offices" />
         </Tabs>
-        
+
         <List disablePadding>
           {currentClients.map((client) => (
-            <ListItem 
-              key={client.id} 
+            <ListItem
+              key={client.id}
               disablePadding
               sx={{
                 bgcolor: selectedClientId === client.id ? 'primary.light' : 'transparent',
@@ -459,16 +507,16 @@ export default function ClientsPage() {
                   }
                 />
                 {client.reservedSeats?.length > 0 && activeTab === 0 && (
-                  <Chip 
-                    label={`${client.reservedSeats.length} seats`} 
-                    size="small" 
+                  <Chip
+                    label={`${client.reservedSeats.length} seats`}
+                    size="small"
                     sx={{ ml: 1 }}
                   />
                 )}
                 {activeTab === 1 && client.officeNumber && (
-                  <Chip 
-                    label={client.officeNumber} 
-                    size="small" 
+                  <Chip
+                    label={client.officeNumber}
+                    size="small"
                     sx={{ ml: 1 }}
                   />
                 )}
@@ -484,10 +532,10 @@ export default function ClientsPage() {
           <Card sx={{ width: '100%' }}>
             <CardContent>
               {/* Header with actions */}
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  flexDirection: { xs: 'column', sm: 'row' }, 
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
                   justifyContent: 'space-between',
                   alignItems: { xs: 'flex-start', sm: 'center' },
                   mb: 3,
@@ -512,17 +560,19 @@ export default function ClientsPage() {
                     startIcon={<CheckIcon />}
                     onClick={() => handleAcceptVisit(selectedClient.id, activeTab === 1)}
                     sx={{ textTransform: 'none' }}
+                    disabled={isAccepting || isRejecting} // Disable if either action is ongoing
                   >
-                    Accept Request
+                    {isAccepting ? 'Accepting...' : 'Accept Request'}
                   </Button>
                   <Button
                     variant="outlined"
                     color="error"
                     startIcon={<CloseIcon />}
-                    onClick={() => handleRejectVisit(selectedClient.id, activeTab === 1)}
+                    onClick={handleRejectClick}
                     sx={{ textTransform: 'none' }}
+                    disabled={isAccepting || isRejecting} // Disable if either action is ongoing
                   >
-                    Reject
+                    {isRejecting ? 'Rejecting...' : 'Reject'}
                   </Button>
                 </Stack>
               </Box>
@@ -597,17 +647,17 @@ export default function ClientsPage() {
                   </Typography>
                   <Paper variant="outlined" sx={{ p: 2 }}>
                     <Stack direction="row" spacing={2} mb={2} flexWrap="wrap">
-                      <Chip 
+                      <Chip
                         icon={<Box sx={{ width: 14, height: 14, bgcolor: 'primary.main' }} />}
                         label="Scheduled for visit"
                         size="small"
                       />
-                      <Chip 
+                      <Chip
                         icon={<Box sx={{ width: 14, height: 14, bgcolor: 'error.light' }} />}
                         label="Occupied seat"
                         size="small"
                       />
-                      <Chip 
+                      <Chip
                         icon={<Box sx={{ width: 14, height: 14, bgcolor: 'grey.100', border: 1, borderColor: 'grey.300' }} />}
                         label="Vacant seat"
                         size="small"
@@ -644,6 +694,14 @@ export default function ClientsPage() {
           </Paper>
         )}
       </Box>
+
+      {/* Reject Reason Modal */}
+      <RejectReasonModal
+        open={showRejectModal}
+        onClose={handleCloseRejectModal}
+        onConfirm={handleConfirmReject}
+        isSubmitting={isRejecting} // Pass isSubmitting to the modal
+      />
     </Box>
   );
 }

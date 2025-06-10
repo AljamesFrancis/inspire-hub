@@ -13,6 +13,7 @@ import AddtenantPO from "./AddTenantPO";
 import TenantDetailsModal from "./TenantDetailsModal";
 import ExtensionBillingModal from "./ExtensionBillingModal";
 import AddTenantVirtual from "./AddTenantVirtual";
+import EditTenantModal from "./EditTenantModal"; // <--- NEW: Import your EditTenantModal component
 import {
   Box,
   Button,
@@ -46,7 +47,7 @@ import AddIcon from "@mui/icons-material/Add";
 import { blue, green, grey, red, purple } from "@mui/material/colors";
 import { sendSubscriptionExpiryNotification } from "../../(admin)/utils/email"; // Make sure this is the correct import
 
-// Utility functions
+// Utility functions (keeping them as is)
 function groupIntoPairs(entries) {
   const groups = [];
   for (let i = 0; i < entries.length; i += 2) {
@@ -98,13 +99,17 @@ export default function SeatMapTable() {
   const [clientToExtend, setClientToExtend] = useState(null);
   const [showVirtualOfficeModal, setShowVirtualOfficeModal] = useState(false);
 
+  // --- NEW: State for editing tenant details ---
+  const [editTenantModalOpen, setEditTenantModalOpen] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState(null);
+
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     client: null,
     isPrivate: false,
   });
 
-  // --- EMAIL NOTIFICATION HOOKS ---
+  // --- EMAIL NOTIFICATION HOOKS (keeping them as is) ---
   // Dedicated Desk
   useEffect(() => {
     if (!clients || clients.length === 0) return;
@@ -183,7 +188,7 @@ export default function SeatMapTable() {
             expiry_date: end.toLocaleDateString(undefined, {
               year: "numeric",
               month: "long",
-              day: "numeric",
+              mday: "numeric",
             }),
           });
           const clientRef = doc(db, "virtualOffice", client.id);
@@ -196,6 +201,7 @@ export default function SeatMapTable() {
   }, [virtualOfficeClients]);
   // --- END EMAIL NOTIFICATION HOOKS ---
 
+  // Initial data fetching for dedicated desks
   useEffect(() => {
     async function fetchData() {
       const querySnapshot = await getDocs(collection(db, "seatMap"));
@@ -208,6 +214,7 @@ export default function SeatMapTable() {
     fetchData();
   }, []);
 
+  // Fetch private office data when tab is selected for the first time
   useEffect(() => {
     async function fetchPrivateOfficeData() {
       const querySnapshot = await getDocs(collection(db, "privateOffice"));
@@ -223,6 +230,7 @@ export default function SeatMapTable() {
     }
   }, [tabIndex, isPrivateTabLoaded]);
 
+  // Fetch virtual office data when tab is selected for the first time
   useEffect(() => {
     async function fetchVirtualOfficeData() {
       const querySnapshot = await getDocs(collection(db, "virtualOffice"));
@@ -238,41 +246,77 @@ export default function SeatMapTable() {
     }
   }, [tabIndex, isVirtualTabLoaded]);
 
+  // Function to refresh client data across all relevant collections
   const refreshClients = async () => {
-    const querySnapshot = await getDocs(collection(db, "seatMap"));
-    const docs = querySnapshot.docs.map((doc) => ({
+    // Dedicated Desks
+    const seatMapSnapshot = await getDocs(collection(db, "seatMap"));
+    const seatMapDocs = seatMapSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
-    setClients(docs);
+    setClients(seatMapDocs);
 
-    if (tabIndex === 1) {
-      const privateSnapshot = await getDocs(collection(db, "privateOffice"));
-      const privateDocs = privateSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setPrivateOfficeClients(privateDocs);
-      setIsPrivateTabLoaded(true);
-    }
+    // Private Office
+    const privateOfficeSnapshot = await getDocs(collection(db, "privateOffice"));
+    const privateOfficeDocs = privateOfficeSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setPrivateOfficeClients(privateOfficeDocs);
 
-    if (tabIndex === 2) {
-      const virtualSnapshot = await getDocs(collection(db, "virtualOffice"));
-      const virtualDocs = virtualSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setVirtualOfficeClients(virtualDocs);
-      setIsVirtualTabLoaded(true);
-    }
+    // Virtual Office
+    const virtualOfficeSnapshot = await getDocs(collection(db, "virtualOffice"));
+    const virtualOfficeDocs = virtualOfficeSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setVirtualOfficeClients(virtualOfficeDocs);
   };
 
   const handleOpenExtensionModal = (client) => {
     setClientToExtend(client);
     setExtensionModalOpen(true);
-    setShowTenantDetails(false);
+    setShowTenantDetails(false); // Close details modal when opening extension
   };
 
+  // --- NEW: Edit Handlers ---
+  const handleEditTenant = (client) => {
+    setClientToEdit(client);
+    setEditTenantModalOpen(true);
+    setShowTenantDetails(false); // Close the details modal when opening edit
+  };
+
+  const handleCloseEditModal = () => {
+    setEditTenantModalOpen(false);
+    setClientToEdit(null);
+  };
+
+  const handleSaveEditedTenant = async (updatedClientData) => {
+    let collectionName;
+    // Determine the correct collection based on the client's type or identifying fields
+    if (updatedClientData.type === "private" || (updatedClientData.selectedPO && updatedClientData.selectedPO.length > 0)) {
+      collectionName = "privateOffice";
+    } else if (updatedClientData.type === "virtual" || (updatedClientData.virtualOfficeFeatures && updatedClientData.virtualOfficeFeatures.length > 0)) {
+      collectionName = "virtualOffice";
+    } else {
+      collectionName = "seatMap"; // Default to dedicated desks
+    }
+
+    try {
+      const clientRef = doc(db, collectionName, updatedClientData.id);
+      await updateDoc(clientRef, updatedClientData);
+      console.log(`Client ${updatedClientData.id} updated successfully in ${collectionName}!`);
+      handleCloseEditModal(); // Close the edit modal
+      await refreshClients(); // Refresh data in the table
+    } catch (error) {
+      console.error("Error updating client:", error);
+      // You might want to add user-facing error feedback here
+    }
+  };
+  // --- END NEW: Edit Handlers ---
+
+
+  // Filtering clients based on active status and type
   const dedicatedDeskClients = clients.filter(
     (client) =>
       (client.type === "dedicated" ||
@@ -369,13 +413,28 @@ export default function SeatMapTable() {
 
   const confirmDeactivate = async () => {
     const { client, isPrivate } = confirmDialog;
-    let collectionName = "seatMap";
-    if (tabIndex === 1 || isPrivate) collectionName = "privateOffice";
-    if (tabIndex === 2) collectionName = "virtualOfficeTenants";
-    const clientRef = doc(db, collectionName, client.id);
-    await deleteDoc(clientRef);
+    let collectionName;
+    if (tabIndex === 0) collectionName = "seatMap"; // Dedicated
+    else if (tabIndex === 1 || isPrivate) collectionName = "privateOffice"; // Private
+    else if (tabIndex === 2) collectionName = "virtualOffice"; // Virtual (using "virtualOffice" as per your useEffect)
+    
+    // Safety check for client.id
+    if (!client?.id || !collectionName) {
+      console.error("Cannot deactivate: Missing client ID or collection name.");
+      setConfirmDialog({ open: false, client: null, isPrivate: false });
+      return;
+    }
+
+    try {
+      const clientRef = doc(db, collectionName, client.id);
+      await deleteDoc(clientRef);
+      console.log(`Client ${client.id} deactivated from ${collectionName}.`);
+    } catch (error) {
+      console.error("Error deactivating client:", error);
+    }
+    
     setConfirmDialog({ open: false, client: null, isPrivate: false });
-    await refreshClients();
+    await refreshClients(); // Refresh the data after deletion
   };
 
   const cancelDeactivate = () => {
@@ -417,15 +476,16 @@ export default function SeatMapTable() {
 
   return (
     <Box p={3}>
-      <Typography variant="h4" fontWeight={700} mb={4}>
+      <Typography variant="h4" fontWeight={700} >
         Tenants
       </Typography>
       <Tabs
         value={tabIndex}
         onChange={(_, newValue) => {
           setTabIndex(newValue);
-          if (newValue === 1) setIsPrivateTabLoaded(false);
-          if (newValue === 2) setIsVirtualTabLoaded(false);
+          // Re-fetch data if tab is switched to and not yet loaded, though refreshClients handles this broadly now
+          // if (newValue === 1) setIsPrivateTabLoaded(false); // No longer strictly needed due to refreshClients
+          // if (newValue === 2) setIsVirtualTabLoaded(false); // No longer strictly needed due to refreshClients
         }}
         sx={{ mb: 3 }}
         indicatorColor="primary"
@@ -693,12 +753,17 @@ export default function SeatMapTable() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Tenant Details Modal */}
       <TenantDetailsModal
         open={showTenantDetails}
         onClose={() => setShowTenantDetails(false)}
         client={tenantDetailsClient}
         onExtend={handleOpenExtensionModal}
+        onEdit={handleEditTenant} 
       />
+
+      {/* Add Tenant Modals (unchanged) */}
       {showAddModal && addModalType === "private" && (
         <AddtenantPO
           showAddModal={showAddModal}
@@ -721,12 +786,27 @@ export default function SeatMapTable() {
           refreshClients={refreshClients}
         />
       )}
+
+      {/* Extension Billing Modal (unchanged) */}
       <ExtensionBillingModal
         open={extensionModalOpen}
         onClose={() => setExtensionModalOpen(false)}
         client={clientToExtend}
         refreshClients={refreshClients}
       />
+
+      {/* --- NEW: Edit Tenant Modal --- */}
+      {editTenantModalOpen && (
+        <EditTenantModal
+          open={editTenantModalOpen}
+          onClose={handleCloseEditModal}
+          client={clientToEdit}
+          onSave={handleSaveEditedTenant} // Pass the function to handle saving updates
+        />
+      )}
+      {/* --- END NEW: Edit Tenant Modal --- */}
+
+      {/* Confirm Deactivate Dialog (unchanged) */}
       <Dialog
         open={confirmDialog.open}
         onClose={cancelDeactivate}
