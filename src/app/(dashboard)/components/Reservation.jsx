@@ -3,6 +3,18 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { db } from "../../../../script/firebaseConfig";
 import { collection, addDoc } from "firebase/firestore";
+import { FiPlus, FiTrash2, FiClock, FiUser, FiMail, FiPhone, FiCalendar, FiInfo, FiArrowLeft } from "react-icons/fi";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { useSearchParams } from "next/navigation";
+
+// Meeting room info (for dynamic display/rates)
+const MEETING_ROOMS = {
+  boracay: { name: 'Boracay', price: 2800 },
+  coron: { name: 'Coron', price: 1450 },
+  elnido: { name: 'El Nido', price: 4300 },
+  siargao: { name: 'Siargao', price: 11000 },
+};
 
 const initialTimeSlots = [
   { time: "07", status: "busy" },
@@ -21,16 +33,23 @@ const initialTimeSlots = [
 ];
 
 const statusStyles = {
-  available: "bg-white border border-gray-300 cursor-pointer",
-  selected: "bg-orange-400 border border-gray-300 cursor-pointer",
-  busy: "bg-gray-500 border border-gray-300 cursor-not-allowed",
-  "after-hours":"bg-gray-200 border border-gray-300 bg-[repeating-linear-gradient(45deg,_#ccc_0,_#ccc_5px,_#fff_5px,_#fff_10px)] cursor-pointer",
+  available: "bg-white border border-gray-300 hover:bg-blue-50 cursor-pointer",
+  selected: "bg-blue-500 text-white border border-blue-600 cursor-pointer",
+  busy: "bg-gray-200 border border-gray-300 cursor-not-allowed",
+  "after-hours": "bg-gray-100 border border-gray-300 bg-[repeating-linear-gradient(45deg,_#f0f0f0_0,_#f0f0f0_5px,_#fff_5px,_#fff_10px)] hover:bg-blue-50 cursor-pointer",
+};
+
+const statusLabels = {
+  available: "Available",
+  selected: "Selected",
+  busy: "Unavailable",
+  "after-hours": "After Hours (+20%)"
 };
 
 const toMilitaryTime = (timeStr) => {
+  if (!timeStr) return "";
   const [time, modifier] = timeStr.split(" ");
   let [hours, minutes] = time.split(":");
-
   hours = parseInt(hours);
   if (modifier === "PM" && hours !== 12) {
     hours += 12;
@@ -38,14 +57,18 @@ const toMilitaryTime = (timeStr) => {
   if (modifier === "AM" && hours === 12) {
     hours = 0;
   }
-
   return `${hours.toString().padStart(2, "0")}:${minutes}`;
 };
 
 export default function TimeSlotSchedule() {
+  const searchParams = useSearchParams();
+  const roomKey = (searchParams.get("room") || "boracay").toLowerCase();
+  const room = MEETING_ROOMS[roomKey] || MEETING_ROOMS.boracay;
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    phone: "",
     date: "",
     time: "",
     duration: "",
@@ -53,25 +76,25 @@ export default function TimeSlotSchedule() {
     specialRequests: "",
   });
 
-    const [slots, setSlots] = useState(initialTimeSlots);
-  
+  const [slots, setSlots] = useState(initialTimeSlots);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const updateSelectedSlots = (startTime, duration) => {
+    if (!startTime || !duration) return;
     const startHour = parseInt(toMilitaryTime(startTime).split(":")[0]);
     const durationHours = parseInt(duration);
     const endHour = startHour + durationHours;
-  
-    // Check if the booking goes beyond 7:00 PM (19:00)
+
     if (endHour > 20) {
-      alert(
-        `❌ Booking overlaps with time beyond 8:00 PM (20:00).\n\nAvailable booking hours:\n- Morning: 08:00 AM to 7:00 PM`
-      );
+      toast.error("Booking cannot extend beyond 8:00 PM (20:00)", {
+        position: "top-center",
+        autoClose: 3000,
+      });
       return;
     }
-  
+
     const newSlots = slots.map((slot) => {
       const slotHour = parseInt(slot.time);
-  
-      // Highlight selected range if available or after-hours
       if (
         slotHour >= startHour &&
         slotHour < endHour &&
@@ -79,8 +102,6 @@ export default function TimeSlotSchedule() {
       ) {
         return { ...slot, status: "selected" };
       }
-  
-      // Deselect previously selected slots if no longer in range
       if (
         slot.status === "selected" &&
         (slotHour < startHour || slotHour >= endHour)
@@ -89,10 +110,9 @@ export default function TimeSlotSchedule() {
           ? { ...slot, status: "after-hours" }
           : { ...slot, status: "available" };
       }
-  
       return slot;
     });
-  
+
     const hasBusyConflict = newSlots.some((slot) => {
       const slotHour = parseInt(slot.time);
       return (
@@ -101,53 +121,63 @@ export default function TimeSlotSchedule() {
         slot.status === "busy"
       );
     });
-  
+
     const includesAfterHours = newSlots.some((slot) => {
       const slotHour = parseInt(slot.time);
       return slotHour >= startHour && slotHour < endHour && slotHour >= 17;
     });
-  
+
     if (hasBusyConflict) {
-      alert(
-        `❌ Selected time overlaps with a busy slot.\n\nAvailable booking hours:\n- Morning: 08:00 AM to 7:00 PM`
-      );
+      toast.error("Selected time overlaps with unavailable slots", {
+        position: "top-center",
+        autoClose: 3000,
+      });
       return;
     }
-  
+
     if (includesAfterHours) {
-      alert(`⚠️ After hours (charges apply) for bookings from 5:00 PM to 7:00 PM.`);
+      toast.warning("After-hours booking (additional charges apply)", {
+        position: "top-center",
+        autoClose: 4000,
+      });
     }
-  
+
     setSlots(newSlots);
   };
 
   const handleChange = (e) => {
-  const { name, value } = e.target;
+    const { name, value } = e.target;
 
-  // Prevent selecting Saturday (6) or Sunday (1)
-  if (name === "date") {
-    const selectedDate = new Date(value);
-    const day = selectedDate.getDay();
-    if (day === 1 || day === 6) {
-      alert("❌ Booking is not available on weekends (Saturday & Sunday).");
-      return; // Skip updating form
+    if (name === "date") {
+      const selectedDate = new Date(value);
+      const day = selectedDate.getDay();
+      if (day === 0 || day === 6) {
+        toast.error("Weekend bookings are not available", {
+          position: "top-center",
+          autoClose: 3000,
+        });
+        return;
+      }
     }
-  }
 
-  const updatedFormData = { ...formData, [name]: value };
-  setFormData(updatedFormData);
+    const updatedFormData = { ...formData, [name]: value };
+    setFormData(updatedFormData);
 
-  if (name === "time" || name === "duration") {
-    setTimeout(() => {
-      updateSelectedSlots(
-        name === "time" ? value : updatedFormData.time,
-        name === "duration" ? value : updatedFormData.duration
-      );
-    }, 0);
-  }
-};
+    if (name === "time" || name === "duration") {
+      setTimeout(() => {
+        updateSelectedSlots(
+          name === "time" ? value : updatedFormData.time,
+          name === "duration" ? value : updatedFormData.duration
+        );
+      }, 0);
+    }
+  };
 
   const addGuest = () => {
+    if (formData.guests.length >= 8) {
+      toast.warning("Maximum 8 guests allowed", { position: "top-center" });
+      return;
+    }
     setFormData(prev => ({ ...prev, guests: [...prev.guests, ""] }));
   };
 
@@ -166,254 +196,357 @@ export default function TimeSlotSchedule() {
     });
   };
 
+  const calculateTotalCost = () => {
+    if (!formData.duration) return 0;
+    const duration = parseInt(formData.duration);
+    const baseRate = room.price;
+    let total = baseRate * duration;
+    if (formData.time) {
+      const startHour = parseInt(toMilitaryTime(formData.time).split(":")[0]);
+      if (startHour >= 17 || (startHour + duration) > 17) {
+        total *= 1.2;
+      }
+    }
+    return total.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-   const selectedSlots = slots
+    setIsSubmitting(true);
+
+    if (!formData.name || !formData.email || !formData.date || !formData.time || !formData.duration) {
+      toast.error("Please fill in all required fields", { position: "top-center" });
+      setIsSubmitting(false);
+      return;
+    }
+
+    const selectedSlots = slots
       .filter((slot) => slot.status === "selected")
       .map((s) => s.time)
       .join(", ");
-  
-    
+
     const militaryTime = toMilitaryTime(formData.time);
+    const [fromHour, fromMin] = militaryTime.split(":").map(Number);
+    const durationHours = parseInt(formData.duration);
+    const toHour = fromHour + durationHours;
+    const toTime = `${toHour.toString().padStart(2, "0")}:${fromMin.toString().padStart(2, "0")}`;
 
     const reservationData = {
       ...formData,
+      room: room.name,
       time: militaryTime,
       selectedSlots,
+      from_time: militaryTime,
+      to_time: toTime,
       timestamp: new Date(),
-      status: "pending"
+      status: "pending",
+      totalCost: calculateTotalCost(),
     };
 
     try {
-          // Save to Firestore under "meeting room" collection
-          await addDoc(collection(db, "meeting room"), reservationData);
-      
-          alert("Reservation saved to Database!");
-      
-          // Reset form and slots after successful submit
-          setFormData({
-            name: "",
-            email: "",
-            date: "",
-            time: "",
-            duration: "",
-            guests: 0,
-            specialRequests: "",
-          });
-      
-          setSlots(initialTimeSlots); // Reset slot selection
-        } catch (error) {
-          console.error("Error adding reservation: ", error);
-          alert("Failed to save reservation. Please try again.");
-        }
-      };
+      await addDoc(collection(db, "meeting room"), reservationData);
+      toast.success("Reservation submitted successfully!", { position: "top-center" });
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        date: "",
+        time: "",
+        duration: "",
+        guests: [],
+        specialRequests: "",
+      });
+      setSlots(initialTimeSlots);
+    } catch (error) {
+      console.error("Error adding reservation: ", error);
+      toast.error("Failed to submit reservation. Please try again.", { position: "top-center" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleSlotClick = (index) => {
+    const slot = slots[index];
+    if (slot.status === "busy") return;
+
     setSlots((prev) =>
       prev.map((slot, i) =>
         i === index && slot.status === "available"
           ? { ...slot, status: "selected" }
           : i === index && slot.status === "selected"
           ? { ...slot, status: "available" }
+          : i === index && slot.status === "after-hours"
+          ? { ...slot, status: "selected" }
           : slot
       )
     );
   };
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
-      <h1 className="text-xl font-bold mb-4">Boracay (Good for 9 Pax Php 2,800 / hr.)</h1>
-
-      <form onSubmit={handleSubmit} className="mb-6 space-y-4">
-        {/* Name and Email Fields */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium">Name</label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              className="mt-1 block w-full border rounded px-3 py-2"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Email</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              className="mt-1 block w-full border rounded px-3 py-2"
-              required
-            />
-          </div>
-        </div>
-
-        {/* Date, Time, Duration */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium">Date</label>
-              <DatePicker
-              selected={formData.date ? new Date(formData.date) : null}
-              onChange={(date) =>
-                handleChange({
-                  target: { name: "date", value: date.toISOString().split("T")[0] },
-                })
-              }
-              filterDate={(date) => {
-                const day = date.getDay(); // 0 = Sun, 6 = Sat
-                if (day === 0 || day === 6) return false; // disable weekends
-            
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-            
-                // Calculate date 2 weekdays from now
-                let weekdaysAdded = 0;
-                let checkDate = new Date(today);
-                while (weekdaysAdded < 2) {
-                  checkDate.setDate(checkDate.getDate() + 1);
-                  const checkDay = checkDate.getDay();
-                  if (checkDay !== 0 && checkDay !== 6) weekdaysAdded++;
-                }
-            
-                return date >= checkDate;
-              }}
-              minDate={new Date()} // Optional safeguard
-              className="mt-1 block w-full border rounded px-3 py-2"
-              placeholderText="Select a date"
-              dateFormat="yyyy-MM-dd"
-            />
-          </div>
-            <div>
-            <label className="block text-sm font-medium">Starts at</label>
-            <select
-              name="time"
-              value={formData.time}
-              onChange={handleChange}
-              className="mt-1 block w-full border rounded px-3 py-2"
-              required
-            >
-              <option value="">Select Time</option>
-              {Array.from({ length: 13 }, (_, i) => {
-                const hour = i + 7;
-                const ampm = hour >= 12 ? "PM" : "AM";
-                const displayHour = hour > 12 ? hour - 12 : hour;
-                return (
-                  <option key={hour} value={`${displayHour}:00 ${ampm}`}>
-                    {displayHour}:00 {ampm}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Duration</label>
-            <select
-              name="duration"
-              value={formData.duration}
-              onChange={handleChange}
-              className="mt-1 block w-full border rounded px-3 py-2"
-              required
-            >
-              <option value="">Select Duration</option>
-              {Array.from({ length: 10 }, (_, i) => (
-                <option key={i} value={`${i + 1} hrs`}>
-                  {i + 1} hour{i !== 0 ? "s" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Time Slots Display */}
-        <div className="mt-6">
-          <div className="flex items-end space-x-1 mb-2">
-            <span className="text-sm">07:00AM</span>
-            <div className="flex border-black border-1 border-solid">
-              {slots.map((slot, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleSlotClick(idx)}
-                  className={`w-12 h-12 text-sm flex items-center justify-center border-none ${statusStyles[slot.status]}`}
-                  disabled={slot.status === "busy"}
-                >
-                  {slot.time}
-                </button>
-              ))}
+    <div className="max-w-4xl mx-auto p-4 md:p-6 mt-20">
+      <a
+        href="/meetingroomlp"
+        className="mb-4 flex items-center px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
+      >
+        <FiArrowLeft className="mr-2" />
+        Back
+      </a>
+      <ToastContainer />
+      <div className="bg-white rounded-xl shadow-md overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-white">
+          <h1 className="text-2xl font-bold">{room.name} Meeting Room</h1>
+          <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
+            <div className="flex items-center">
+              <FiUser className="mr-1" />
+              <span>Capacity: 9 pax</span>
             </div>
-            <span className="text-sm">20:00PM</span>
+            <div className="flex items-center">
+              <FiClock className="mr-1" />
+              <span>Rate: ₱{room.price.toLocaleString()}/hour</span>
+            </div>
+            <div className="flex items-center">
+              <FiInfo className="mr-1" />
+              <span>After-hours (5PM-8PM): +20%</span>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-4 text-sm mb-4">
-            {Object.entries(statusStyles).map(([status, style]) => (
-              <div key={status} className="flex items-center">
-                <div className={`w-4 h-4 mr-1 ${style}`}></div>
-                {status.charAt(0).toUpperCase() + status.slice(1).replace("-", " ")}
+        </div>
+
+        <div className="p-6 md:p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Personal Information */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700 flex items-center">
+                  <FiUser className="mr-2" /> Full Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                  placeholder="John Doe"
+                />
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Guest Management */}
-        <div className="space-y-3">
-          <label className="block text-sm font-medium">Guest Names</label>
-          {formData.guests.length > 0 && (
-            <div className={`space-y-2 ${formData.guests.length >= 3 ? 'max-h-[140px] overflow-y-auto' : ''}`}>
-
-
-              {formData.guests.map((guest, index) => (
-                <div key={index} className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    value={guest}
-                    onChange={(e) => handleGuestNameChange(index, e.target.value)}
-                    placeholder={`Guest ${index + 1} name`}
-                    className="flex-1 border border-gray-300 rounded px-3 py-2"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeGuest(index)}
-                    className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700 flex items-center">
+                  <FiMail className="mr-2" /> Email *
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                  placeholder="your@email.com"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700 flex items-center">
+                  <FiPhone className="mr-2" /> Phone Number
+                </label>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="09123456789"
+                />
+              </div>
             </div>
-          )}
-          <button
-            type="button"
-            onClick={addGuest}
-            className="px-4 py-2 bg-green-100 text-green-700 rounded hover:bg-green-200"
-          >
-            + Add Guest
-          </button>
-        </div>
 
-        {/* Special Requests */}
-        <div>
-          <label className="block text-sm font-medium">Special Requests</label>
-          <textarea
-            name="specialRequests"
-            value={formData.specialRequests}
-            onChange={handleChange}
-            placeholder="e.g. have my guests wait in reception"
-            className="mt-1 block w-full border rounded px-3 py-2"
-            rows={3}
-          />
-        </div>
+            {/* Booking Details */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700 flex items-center">
+                  <FiCalendar className="mr-2" /> Date *
+                </label>
+                <DatePicker
+                  selected={formData.date ? new Date(formData.date) : null}
+                  onChange={(date) =>
+                    handleChange({
+                      target: { name: "date", value: date ? date.toISOString().split("T")[0] : "" },
+                    })
+                  }
+                  filterDate={(date) => {
+                    const day = date.getDay();
+                    if (day === 0 || day === 6) return false;
 
-        {/* Submit Button */}
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-        >
-          Reserve Now
-        </button>
-      </form>
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    let weekdaysAdded = 0;
+                    let checkDate = new Date(today);
+                    while (weekdaysAdded < 2) {
+                      checkDate.setDate(checkDate.getDate() + 1);
+                      const checkDay = checkDate.getDay();
+                      if (checkDay !== 0 && checkDay !== 6) weekdaysAdded++;
+                    }
+
+                    return date >= checkDate;
+                  }}
+                  minDate={new Date()}
+                  className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholderText="Select a date"
+                  dateFormat="MMMM d, yyyy"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Start Time *</label>
+                <select
+                  name="time"
+                  value={formData.time}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">Select Time</option>
+                  {Array.from({ length: 13 }, (_, i) => {
+                    const hour = i + 7;
+                    const ampm = hour >= 12 ? "PM" : "AM";
+                    const displayHour = hour > 12 ? hour - 12 : hour;
+                    return (
+                      <option key={hour} value={`${displayHour}:00 ${ampm}`}>
+                        {displayHour}:00 {ampm}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Duration *</label>
+                <select
+                  name="duration"
+                  value={formData.duration}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">Select Duration</option>
+                  {Array.from({ length: 10 }, (_, i) => (
+                    <option key={i} value={`${i + 1}`}>
+                      {i + 1} hour{i !== 0 ? "s" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Time Slot Visualization */}
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Availability</h3>
+              <div className="flex items-center space-x-2 mb-4">
+                <span className="text-sm text-gray-500">7:00 AM</span>
+                <div className="flex-1 flex border border-gray-200 rounded-md overflow-hidden">
+                  {slots.map((slot, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSlotClick(idx)}
+                      className={`flex-1 h-12 flex items-center justify-center transition-colors ${statusStyles[slot.status]}`}
+                      disabled={slot.status === "busy"}
+                      title={statusLabels[slot.status]}
+                    >
+                      <span className={`text-xs font-medium ${slot.status === "selected" ? "text-white" : "text-gray-700"}`}>
+                        {slot.time}:00
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <span className="text-sm text-gray-500">8:00 PM</span>
+              </div>
+              
+              {/* Status Legend */}
+              <div className="flex flex-wrap gap-4 text-sm mb-4">
+                {Object.entries(statusStyles).map(([status, style]) => (
+                  <div key={status} className="flex items-center">
+                    <div className={`w-4 h-4 mr-2 ${style} rounded-sm`}></div>
+                    <span className="text-gray-700">{statusLabels[status]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Guest Management */}
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-gray-700">Guest Names</label>
+              {formData.guests.length > 0 && (
+                <div className={`space-y-3 ${formData.guests.length >= 3 ? 'max-h-[180px] overflow-y-auto pr-2' : ''}`}>
+                  {formData.guests.map((guest, index) => (
+                    <div key={index} className="flex gap-3 items-center">
+                      <input
+                        type="text"
+                        value={guest}
+                        onChange={(e) => handleGuestNameChange(index, e.target.value)}
+                        placeholder={`Guest ${index + 1} name`}
+                        className="flex-1 border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeGuest(index)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        title="Remove guest"
+                      >
+                        <FiTrash2 />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={addGuest}
+                className="flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                <FiPlus className="mr-1" /> Add Guest
+              </button>
+            </div>
+
+            {/* Special Requests */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Special Requests</label>
+              <textarea
+                name="specialRequests"
+                value={formData.specialRequests}
+                onChange={handleChange}
+                placeholder="e.g. AV equipment, catering requirements, etc."
+                className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                rows={3}
+              />
+            </div>
+
+            {/* Summary and Submit */}
+            <div className="border-t border-gray-200 pt-6">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Total</h3>
+                  <p className="text-sm text-gray-500">Includes all applicable charges</p>
+                </div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {calculateTotalCost()}
+                </div>
+              </div>
+              
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className={`w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-colors ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
+              >
+                {isSubmitting ? 'Processing...' : 'Confirm Reservation'}
+              </button>
+              
+              <p className="mt-3 text-xs text-gray-500 text-center">
+                By confirming, you agree to our cancellation policy.
+              </p>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

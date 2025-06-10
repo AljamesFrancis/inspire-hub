@@ -3,30 +3,39 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 
+// Add price and a roomKey (for URL param) for each room
 const images = [
   { 
     id: 1, 
     url: '/images/IMG_5296.jpg', 
     label: 'Boracay', 
-    landingPage: '/meetingroom' // Your actual Nagoya landing page route
+    price: 2800,
+    roomKey: 'boracay',
+    landingPage: '/meetingroom?room=boracay'
   },
   { 
     id: 2, 
     url: '/images/IMG_5338.jpg', 
     label: 'Siargao', 
-    landingPage: '/meetingroom2' // Your actual Tokyo landing page route
+    price: 11000,
+    roomKey: 'siargao',
+    landingPage: '/meetingroom?room=siargao'
   },
   { 
     id: 3, 
     url: '/images/IMG_5330.jpg', 
     label: 'El Nido', 
-    landingPage: '/meetingroom3' // Your actual Yokohama landing page route
+    price: 4300,
+    roomKey: 'elnido',
+    landingPage: '/meetingroom?room=elnido'
   },
   { 
     id: 4, 
     url: '/images/IMG_5283.jpg', 
     label: 'Coron', 
-    landingPage: '/meetingroom4' // Your actual Osaka landing page route
+    price: 1450,
+    roomKey: 'coron',
+    landingPage: '/meetingroom?room=coron'
   },
 ];
 
@@ -47,6 +56,9 @@ export default function FourImageFullScreen() {
             <h2 className="text-white text-2xl font-bold mb-4 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
               {img.label}
             </h2>
+            <span className="text-white text-lg mb-2 bg-black/60 rounded px-4 py-1">
+              ₱{img.price.toLocaleString()}
+            </span>
             <button
               onClick={() => router.push(img.landingPage)}
               className="text-white px-6 py-2 rounded-full text-lg font-semibold shadow-[0_0_10px_rgba(255,255,255,0.8)] bg-black/60 hover:bg-black/80 transition-colors duration-300"

@@ -62,7 +62,7 @@ function formatPHP(amount) {
 
 // 13 Offices
 const PRIVATE_OFFICES = [
-  "Bicol",
+  "BICOL",
   "Cebu",
   "Pampanga",
   "Nueva Ecija",
@@ -70,7 +70,7 @@ const PRIVATE_OFFICES = [
   "Laguna",
   "Rizal",
   "Bacolod",
-  "Iloilo",
+  "ILOILO",
   "Batangas",
   "Mindoro",
   "Cagayan de Oro",

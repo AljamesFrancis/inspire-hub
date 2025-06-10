@@ -1,17 +1,18 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-
+import React from "react";
 import Tenants from "../components/Tenants";
+import withUserRole from '../withUserRole';
 
-export default function WelcomePage () {  return (
-   
-         <div>
-            <Tenants />
-        </div>
-    
-  );
+function WelcomePage({ role }) {
+ 
+  if (role === "admin") {
+    return (
+      <div>
+        <Tenants />
+      </div>
+    );
+  }
 }
 
-
-
+export default withUserRole(WelcomePage, ["admin"]);

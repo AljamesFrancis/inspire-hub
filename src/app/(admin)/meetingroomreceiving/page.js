@@ -1,17 +1,18 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-
+import React from "react";
 import MeetingroomReceiving from "../components/MeetingroomReceiving";
+import withUserRole from '../withUserRole';
 
-export default function WelcomePage () {  return (
-   
-         <div>
-            <MeetingroomReceiving />
-        </div>
-    
-  );
+function WelcomePage({ role }) {
+  if (role === "admin") {
+    return (
+      <div>
+        <MeetingroomReceiving />
+      </div>
+    );
+  }
+
 }
 
-
-
+export default withUserRole(WelcomePage, ["admin"]);

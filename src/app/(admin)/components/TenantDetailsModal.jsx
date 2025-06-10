@@ -20,22 +20,25 @@ import {
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import EditIcon from "@mui/icons-material/Edit"; // Import the Edit icon
 import TenantExtensionHistory from "./TenantExtensionHistory";
 
 /**
  * TenantDetailsModal component
- * 
+ *
  * Props:
  * - open: boolean (controls open/close state)
  * - onClose: function (called to close the modal)
  * - client: tenantDetailsClient object (shows data)
  * - onExtend: function (called when "Extend Availability" button is clicked)
+ * - onEdit: function (NEW: called when "Edit Details" button is clicked, passes the client object)
  */
 export default function TenantDetailsModal({
   open,
   onClose,
   client,
-  onExtend
+  onExtend,
+  onEdit // Add the new onEdit prop
 }) {
   if (!client) return null;
 
@@ -192,10 +195,22 @@ export default function TenantDetailsModal({
         <Button onClick={onClose} color="primary" variant="outlined">
           Close
         </Button>
-        <Button 
+        {/* New Edit Details Button */}
+        <Button
+          onClick={() => {
+            onClose(); // Optionally close the details modal when opening the edit form
+            onEdit(client); // Call the onEdit prop, passing the current client data
+          }}
+          startIcon={<EditIcon />}
+          color="secondary" // You can choose a different color if you like
+          variant="contained"
+        >
+          Edit Details
+        </Button>
+        <Button
           onClick={() => onExtend(client)}
           startIcon={<EventAvailableIcon />}
-          color="primary" 
+          color="primary"
           variant="contained"
         >
           Extend Availability

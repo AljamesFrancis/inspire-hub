@@ -1,6 +1,11 @@
 'use client';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../../../../script/firebaseConfig';
 
 // MUI Icons
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -9,10 +14,49 @@ import EventIcon from '@mui/icons-material/Event';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import MapIcon from '@mui/icons-material/Map';
 import SettingsIcon from '@mui/icons-material/Settings';
-import LoginIcon from '@mui/icons-material/Login';
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
+import LogoutIcon from '@mui/icons-material/Logout';
 
 export default function Navigation() {
+  const [user, setUser] = useState(null);
+  const [role, setRole] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          setRole(userDoc.data().role);
+        } else {
+          setRole(null);
+        }
+      } else {
+        setRole(null);
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setUser(null);
+    setRole(null);
+    router.push('/');
+  };
+
+  // Hide navbar entirely for users without permission (not logged in or no role or role: "client")
+  if (loading) return null;
+  if (!user || !role || role === "client") return null;
+
+  // Hide some links for non-admin
+  const showTenants = role === "admin";
+  const showReports = role === "admin";
+  const showSettings = role === "admin";
+
   return (
     <>
       {/* Top Navigation Bar */}
@@ -55,20 +99,24 @@ export default function Navigation() {
               <MeetingRoomIcon fontSize="small" />
               <span>Meeting Room</span>
             </Link>
-            <Link
-              href="/tenants"
-              className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
-            >
-              <EventIcon fontSize="small" />
-              <span>Tenants</span>
-            </Link>
-            <Link
-              href="/reports"
-              className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
-            >
-              <AssessmentIcon fontSize="small" />
-              <span>Reports</span>
-            </Link>
+            {showTenants && (
+              <Link
+                href="/tenants"
+                className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
+              >
+                <EventIcon fontSize="small" />
+                <span>Tenants</span>
+              </Link>
+            )}
+            {showReports && (
+              <Link
+                href="/reports"
+                className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
+              >
+                <AssessmentIcon fontSize="small" />
+                <span>Reports</span>
+              </Link>
+            )}
             <Link
               href="/seatmap"
               className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
@@ -76,29 +124,27 @@ export default function Navigation() {
               <MapIcon fontSize="small" />
               <span>Map</span>
             </Link>
-            <Link
-              href="/settings"
-              className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
-            >
-              <SettingsIcon fontSize="small" />
-              <span>Settings</span>
-            </Link>
+            {showSettings && (
+              <Link
+                href="/settings"
+                className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
+              >
+                <SettingsIcon fontSize="small" />
+                <span>Settings</span>
+              </Link>
+            )}
           </div>
 
           {/* Account Links */}
           <div className="hidden md:flex space-x-6 items-center ml-4">
-            <button className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2">
-              <LoginIcon fontSize="small" />
-              <span>Login</span>
+            <button
+              onClick={handleLogout}
+              className="text-white font-bold hover:text-blue-300 transition flex items-center space-x-2"
+            >
+              <LogoutIcon fontSize="small" />
+              <span>Logout</span>
             </button>
           </div>
-
-          {/* Mobile menu button (for future implementation) */}
-          <button className="md:hidden flex flex-col justify-center items-center w-8 h-8">
-            <span className="block w-6 h-0.5 bg-gray-300 mb-1.5"></span>
-            <span className="block w-6 h-0.5 bg-gray-300 mb-1.5"></span>
-            <span className="block w-6 h-0.5 bg-gray-300"></span>
-          </button>
         </div>
       </header>
     </>

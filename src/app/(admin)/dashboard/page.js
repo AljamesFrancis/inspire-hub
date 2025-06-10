@@ -1,16 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Dashboard from "../components/Dashboard";
+import withUserRole from '../withUserRole';
 
-export default function WelcomePage () {  return (
-   
-    <div>
-        <Dashboard /> 
-    </div>
-    
-  );
+function WelcomePage({ role }) {
+
+
+  // Example: Only admins can view Dashboard
+  if (role === "admin") {
+    return (
+      <div>
+        <Dashboard />
+      </div>
+    );
+  }
+
 }
 
-
-
+export default withUserRole(WelcomePage);
