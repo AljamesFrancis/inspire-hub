@@ -3,166 +3,176 @@
 import React, { useState, useEffect } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { FiCalendar, FiClock, FiPhone, FiArrowLeft, FiMapPin, FiSearch } from "react-icons/fi";
+// Corrected import: Removed FiBuilding, added FaBuilding
+import { FiCalendar, FiClock, FiPhone, FiArrowLeft, FiMapPin, FiSearch, FiUser, FiMail } from "react-icons/fi"; 
+import { FaBuilding } from "react-icons/fa"; // Import FaBuilding from Font Awesome icons
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../../../script/firebaseConfig";
 import { auth } from "../../../../script/auth";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import emailjs from "@emailjs/browser"; 
+import { sendPrivateOfficeBookingEmail } from "../../(admin)/utils/email";
 
-const ROOMS_BY_AREA = {
-  "BICOL": ["Bicol Room"],
-  "CEBU": ["Cebu Room"],
-  "PAMPANGA": ["Pampanga Room"],
-  "NUEVA ECIJA": ["Nueva Ecija Room"],
-  "PANGASINAN": ["Pangasinan Room"],
-  "LAGUNA": ["Laguna Room"],
-  "RIZAL": ["Rizal Room"],
-  "BACOLOD": ["Bacolod Room"],
-  "ILOILO": ["Iloilo Room"],
-  "BATANGAS": ["Batangas Room"],
-  "MINDORO": ["Mindoro Room"],
-  "CAGAYAN DE ORO": ["Cagayan de Oro Room"],
-  "QUEZON": ["Quezon Room"],
-};
+const PRIVATE_OFFICES = [
+  "Bicol", "Cebu", "Pampanga", "Nueva Ecija", "Panggasinan", "Laguna",
+  "Rizal", "Bacolod", "Iloilo", "Batangas", "Mindoro", "Cagayan de Oro", "Quezon"
+];
 
 export default function BookingForm() {
-  const [selectedArea, setSelectedArea] = useState("");
-  const [selectedRooms, setSelectedRooms] = useState([]);
-  const [reservedRooms, setReservedRooms] = useState([]);
+  const [selectedOffices, setSelectedOffices] = useState([]);
+  const [reservedOffices, setReservedOffices] = useState([]);
+  const [occupiedOffices, setOccupiedOffices] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
-  const [showReceipt, setShowReceipt] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [isRoomOccupied, setIsRoomOccupied] = useState(false);
-  const [occupiedRooms, setOccupiedRooms] = useState([]);
+  const [name, setName] = useState(""); // New state for name
+  const [email, setEmail] = useState(""); // New state for email
+  const [company, setCompany] = useState(""); // New state for company
+  const [isSubmitting, setIsSubmitting] = useState(false); // State to manage submission status
 
-  const roomsForArea = ROOMS_BY_AREA[selectedArea] || [];
-
+  // Initialize EmailJS (important for client-side usage)
   useEffect(() => {
-    const fetchOccupiedRooms = async () => {
+    if (process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY) {
+      emailjs.init(process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY);
+    } else {
+      console.warn("EmailJS public key not set. Email sending may not work.");
+    }
+  }, []);
+
+  // This useEffect will fetch offices that are 'occupied' (confirmed) from the 'privateOffice' collection.
+  // These will be highlighted red.
+  useEffect(() => {
+    const fetchOccupiedOffices = async () => {
       try {
-        const q = query(
-          collection(db, "privateOffice"),
-          where("status", "in", ["reserved", "confirmed"])
-        );
+        const q = query(collection(db, "privateOffice"));
         const snapshot = await getDocs(q);
-        const allOccupiedRooms = snapshot.docs.flatMap(doc => doc.data().selectedPO || []);
-        setOccupiedRooms(allOccupiedRooms);
+        const confirmedOffices = snapshot.docs.flatMap(doc => doc.data().selectedPO || []);
+        setOccupiedOffices(confirmedOffices);
       } catch (error) {
-        console.error("Error fetching occupied rooms:", error);
+        console.error("Error fetching occupied offices from privateOffice:", error);
       }
     };
 
-    fetchOccupiedRooms();
+    fetchOccupiedOffices();
   }, []);
 
+  // This useEffect will fetch 'reserved' offices for the specific selected date and time
+  // from the 'privateOfficeVisits' collection. These will be highlighted blue.
   useEffect(() => {
-    const fetchReservedRooms = async () => {
-      if (!selectedArea || !selectedDate || !selectedTime) return;
-      const q = query(
-        collection(db, "privateOffice"),
-        where("area", "==", selectedArea),
-        where("date", "==", selectedDate),
-        where("time", "==", selectedTime),
-        where("status", "in", ["reserved", "confirmed"])
-      );
-      const snapshot = await getDocs(q);
-      const takenRooms = snapshot.docs.flatMap(doc => doc.data().selectedPO || []);
-      setReservedRooms(takenRooms);
+    const fetchReservedOfficesForDateTime = async () => {
+      if (!selectedDate || !selectedTime) {
+        setReservedOffices([]);
+        return;
+      }
+      try {
+        const q = query(
+          collection(db, "privateOfficeVisits"),
+          where("date", "==", selectedDate),
+          where("time", "==", selectedTime)
+        );
+        const snapshot = await getDocs(q);
+        const takenOffices = snapshot.docs.flatMap(doc => doc.data().office || []);
+        setReservedOffices(takenOffices);
+      } catch (error) {
+        console.error("Error fetching reserved offices from privateOfficeVisits:", error);
+      }
     };
-    fetchReservedRooms();
-  }, [selectedArea, selectedDate, selectedTime]);
+    fetchReservedOfficesForDateTime();
+  }, [selectedDate, selectedTime]);
 
-  const handleRoomClick = (room) => {
-    if (reservedRooms.includes(room) || occupiedRooms.includes(room)) return;
-    setSelectedRooms((prev) =>
-      prev.includes(room) ? prev.filter((r) => r !== room) : [...prev, room]
-    );
-  };
-
-  const checkRoomStatus = (roomName) => {
-    if (!roomName) return false;
-    const foundArea = Object.entries(ROOMS_BY_AREA).find(([area]) =>
-      area.toLowerCase() === roomName.toLowerCase()
-    );
-    if (!foundArea) {
-      toast.info(`Room "${roomName}" was not found.`);
-      setIsRoomOccupied(false);
+  const handleOfficeClick = (office) => {
+    if (occupiedOffices.includes(office)) {
+      toast.error(`${office} is currently occupied.`);
       return;
     }
-    const [areaName, rooms] = foundArea;
-    const isOccupied = rooms.some(room => occupiedRooms.includes(room));
-    const isReserved = rooms.some(room => reservedRooms.includes(room));
-    setIsRoomOccupied(isOccupied || isReserved);
-    if (isOccupied) {
-      toast.error(`${areaName} is currently OCCUPIED.`);
-    } else if (isReserved) {
-      toast.error(`${areaName} is currently RESERVED.`);
-    } else {
-      toast.success(`${areaName} is AVAILABLE for viewing.`);
+    if (reservedOffices.includes(office)) {
+      toast.error(`${office} is reserved for the selected date and time.`);
+      return;
     }
+    setSelectedOffices((prev) =>
+      prev.includes(office) ? prev.filter((o) => o !== office) : [...prev, office]
+    );
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedArea || !selectedDate || !selectedTime || !phoneNumber || selectedRooms.length === 0) {
-      toast.error("Please fill in all required fields.", { position: "top-center" });
+    if (isSubmitting) return; // Prevent double submission
+
+    if (!name || !email || !company || !selectedDate || !selectedTime || !phoneNumber || selectedOffices.length === 0) {
+      toast.error("Please fill in all required fields and select at least one office.", { position: "top-center" });
       return;
     }
-    setShowReceipt(true);
-  };
 
-  const handleFinalSubmit = async () => {
+    setIsSubmitting(true); // Set submitting state to true
+
+    const alreadyReservedNow = selectedOffices.some(office => reservedOffices.includes(office));
+    const alreadyOccupied = selectedOffices.some(office => occupiedOffices.includes(office));
+
+    if (alreadyReservedNow || alreadyOccupied) {
+      toast.error("One or more of your selected offices became unavailable. Please re-select.", { position: "top-center" });
+      setSelectedOffices([]);
+      setIsSubmitting(false); // Reset submitting state
+      return;
+    }
+
     try {
+      // The user object is typically for the logged-in user making the booking.
+      // If you want the entered name/email/company to override, use those.
+      // For this example, we'll prioritize the input fields.
       const user = auth.currentUser;
-      const userName = user ? (user.displayName || user.email) : "Anonymous";
-      const userEmail = user ? user.email : "No Email";
+      const userName = name || (user ? (user.displayName || user.email) : "Anonymous");
+      const userEmail = email || (user ? user.email : "No Email");
 
-      await addDoc(collection(db, "privateOffice"), {
+      // 1. Add reservation to Firestore
+      await addDoc(collection(db, "privateOfficeVisits"), {
         name: userName,
         email: userEmail,
+        company: company, // Added company
         phone: phoneNumber,
         date: selectedDate,
         time: selectedTime,
-        area: selectedArea,
-        selectedPO: selectedRooms,
+        office: selectedOffices,
         timestamp: new Date(),
-        status: "reserved",
+        status: "pending",
       });
 
-      toast.success("Reservation submitted!");
-      setShowReceipt(false);
-      setSelectedRooms([]);
-      setSelectedArea("");
+      // 2. Prepare booking details for the new email function
+      const privateOfficeBookingDetails = {
+        name: userName,
+        email: userEmail,
+        company: company, // Added company to email details
+        phone: phoneNumber,
+        date: selectedDate,
+        time: selectedTime,
+        selectedOffices: selectedOffices, // This maps to 'booked_offices' in the template
+      };
+
+      // 3. Send email to admin using the new dedicated function
+      await sendPrivateOfficeBookingEmail(privateOfficeBookingDetails);
+      toast.success("Reservation submitted and admin notified!");
+
+      // Clear form and reset state
+      setName(""); // Clear name
+      setEmail(""); // Clear email
+      setCompany(""); // Clear company
+      setPhoneNumber("");
+      setSelectedOffices([]);
       setSelectedDate("");
       setSelectedTime("");
-      setPhoneNumber("");
+
     } catch (error) {
-      console.error("Error submitting reservation:", error);
-      toast.error("Failed to submit reservation.");
+      console.error("Error submitting reservation or sending email:", error);
+      toast.error("Failed to submit reservation or send email. Please try again.");
+    } finally {
+      setIsSubmitting(false); // Always reset submitting state
     }
   };
 
-  const filteredAreas = Object.keys(ROOMS_BY_AREA).filter(area =>
-    area.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ROOMS_BY_AREA[area].some(room =>
-      room.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+  const filteredPrivateOffices = PRIVATE_OFFICES.filter(office =>
+    office.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const isRoomReserved = (room) => {
-    return reservedRooms.includes(room);
-  };
-
-  const isAreaOccupied = (area) => {
-    return ROOMS_BY_AREA[area].some(room => occupiedRooms.includes(room));
-  };
-
-  const isAreaReserved = (area) => {
-    return ROOMS_BY_AREA[area].some(room => reservedRooms.includes(room));
-  };
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 mt-20">
@@ -179,11 +189,11 @@ export default function BookingForm() {
         {/* Booking Form */}
         <div className="md:w-1/2 bg-white rounded-xl shadow-md overflow-hidden">
           <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-white">
-            <h1 className="text-2xl font-bold">Private Room Reservation</h1>
+            <h1 className="text-2xl font-bold">Private Room Reservation Visit</h1>
             <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
               <div className="flex items-center">
                 <FiMapPin className="mr-1" />
-                <span>13 Private Rooms</span>
+                <span>{PRIVATE_OFFICES.length} Private Rooms</span>
               </div>
               <div className="flex items-center">
                 <FiClock className="mr-1" />
@@ -193,6 +203,51 @@ export default function BookingForm() {
           </div>
           <div className="p-6 md:p-8">
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Name */}
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700 flex items-center">
+                  <FiUser className="mr-2" /> Full Name *
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter your full name"
+                  required
+                  className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              {/* Email */}
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700 flex items-center">
+                  <FiMail className="mr-2" /> Email *
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email address"
+                  required
+                  className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              {/* Company */}
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700 flex items-center">
+                  <FaBuilding className="mr-2" /> Company * {/* Changed to FaBuilding */}
+                </label>
+                <input
+                  type="text"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  placeholder="Enter your company name"
+                  required
+                  className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
               {/* Date */}
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700 flex items-center">
@@ -219,7 +274,7 @@ export default function BookingForm() {
                     minDate={new Date()}
                     className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholderText="Select a date"
-                    dateFormat="MMMM d, yyyy"
+                    dateFormat="MMMM d, yyyy" // Corrected dateFormat for better display
                     required
                   />
                   <FiCalendar className="absolute right-3 top-3 h-5 w-5 text-gray-400 pointer-events-none" />
@@ -263,98 +318,75 @@ export default function BookingForm() {
                   className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
-              {/* Area */}
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FiMapPin className="mr-2" /> Area *
-                </label>
-                <select
-                  value={selectedArea}
-                  onChange={(e) => {
-                    setSelectedArea(e.target.value);
-                    setSelectedRooms([]);
-                    setIsRoomOccupied(false);
-                  }}
-                  required
-                  className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select a room</option>
-                  {Object.entries(ROOMS_BY_AREA).map(([area, rooms]) => {
-                    const isOccupied = isAreaOccupied(area);
-                    const isReserved = isAreaReserved(area);
-                    return (
-                      <option 
-                        key={area} 
-                        value={area} 
-                        disabled={isOccupied || isReserved}
-                        className={isOccupied || isReserved ? "bg-red-50 text-red-600" : ""}
-                      >
-                        {area} {isOccupied ? "(Occupied)" : isReserved ? "(Reserved)" : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-              {/* Available Rooms */}
-              {selectedArea && (
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="block text-sm font-medium text-gray-700">Available Rooms</label>
-                    <div className="flex flex-wrap gap-2">
-                      {roomsForArea.map((room) => {
-                        const isReserved = isRoomReserved(room);
-                        const isOccupied = occupiedRooms.includes(room);
-                        const isSelected = selectedRooms.includes(room);
-                        
-                        return (
-                          <button
-                            key={room}
-                            type="button"
-                            onClick={() => handleRoomClick(room)}
-                            disabled={isReserved || isOccupied}
-                            className={`w-20 h-10 flex items-center justify-center rounded-md transition-colors
-                              ${
-                                isOccupied || isReserved
-                                  ? "bg-red-100 text-red-800 border border-red-300 cursor-not-allowed"
-                                  : isSelected
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-white border border-gray-200 hover:border-blue-400"
-                              }`}
-                          >
-                            {room}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {selectedRooms.length > 0
-                        ? `Selected: ${selectedRooms.join(", ")}`
-                        : "Click rooms to select"}
-                    </p>
+              {/* Private Offices Selection */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FiMapPin className="mr-2" /> Select Private Office(s) *
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {PRIVATE_OFFICES.map((office) => {
+                      const isReserved = reservedOffices.includes(office);
+                      const isOccupied = occupiedOffices.includes(office);
+                      const isSelected = selectedOffices.includes(office);
+
+                      return (
+                        <button
+                          key={office}
+                          type="button"
+                          onClick={() => handleOfficeClick(office)}
+                          disabled={isReserved || isOccupied || isSubmitting} // Disable if submitting
+                          className={`
+                            h-16 flex flex-col items-center justify-center rounded-md transition-colors text-center p-2
+                            ${
+                              isOccupied
+                                ? "bg-red-100 text-red-800 border border-red-300 cursor-not-allowed"
+                                : isReserved
+                                ? "bg-blue-100 text-blue-800 border border-blue-300 cursor-not-allowed"
+                                : isSelected
+                                ? "bg-blue-600 text-white"
+                                : "bg-white border border-gray-200 hover:border-blue-400"
+                            }
+                            ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}
+                          `}
+                        >
+                          {office}
+                          {isOccupied && <span className="block text-xs mt-1">(Occupied)</span>}
+                          {isReserved && <span className="block text-xs mt-1">(Reserved)</span>}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      type="submit"
-                      disabled={selectedRooms.length === 0 || isRoomOccupied}
-                      className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-colors disabled:bg-gray-300"
-                    >
-                      Reserve Room
-                    </button>
-                    {selectedRooms.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedRooms([])}
-                        className="py-3 px-4 border rounded-md hover:bg-gray-50"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {selectedOffices.length > 0
+                      ? `Selected: ${selectedOffices.join(", ")}`
+                      : "Click offices to select"}
+                  </p>
                 </div>
-              )}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="submit"
+                    disabled={selectedOffices.length === 0 || !selectedDate || !selectedTime || !phoneNumber || !name || !email || !company || isSubmitting}
+                    className={`flex-1 py-3 px-4 bg-blue-600 text-white font-medium rounded-md transition-colors ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:bg-blue-700'}`}
+                  >
+                    {isSubmitting ? 'Processing...' : 'Reserve Office(s)'}
+                  </button>
+                  {selectedOffices.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOffices([])}
+                      disabled={isSubmitting} // Disable if submitting
+                      className={`py-3 px-4 border rounded-md ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
             </form>
           </div>
         </div>
+
         {/* Map/Search Section */}
         <div className="md:w-1/2 bg-white rounded-xl shadow-md overflow-hidden">
           <div className="p-6 md:p-8">
@@ -362,13 +394,12 @@ export default function BookingForm() {
             <div className="relative mb-4">
               <input
                 type="text"
-                placeholder="Search rooms..."
+                placeholder="Search offices..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    checkRoomStatus(searchTerm);
                   }
                 }}
                 className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
@@ -400,79 +431,57 @@ export default function BookingForm() {
             </div>
             <div className="bg-blue-50 p-4 rounded-md">
               <h3 className="font-medium text-blue-800 mb-2">
-                {searchTerm ? "Search Results" : "Room Legend"}
+                {searchTerm ? "Search Results" : "Office Legend"}
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {(searchTerm ? filteredAreas : Object.keys(ROOMS_BY_AREA)).map(area => (
-                  <div
-                    key={area}
-                    className="flex items-center p-1 rounded hover:bg-blue-100 cursor-pointer"
-                    onClick={() => {
-                      checkRoomStatus(area);
-                      setSelectedArea(area);
-                      setSelectedRooms([]);
-                    }}
-                  >
+                {filteredPrivateOffices.map(office => {
+                  const isReserved = reservedOffices.includes(office);
+                  const isOccupied = occupiedOffices.includes(office);
+
+                  return (
                     <div
-                      className={`w-3 h-3 rounded-full mr-2 ${
-                        isAreaOccupied(area) || isAreaReserved(area) ? "bg-red-500" : "bg-blue-500"
-                      }`}
-                    ></div>
-                    <span className={`text-sm ${
-                      isAreaOccupied(area) || isAreaReserved(area) ? "text-red-600 font-medium" : ""
-                    }`}>
-                      {area}
-                    </span>
-                  </div>
-                ))}
+                      key={office}
+                      className="flex items-center p-1 rounded hover:bg-blue-100 cursor-pointer"
+                      onClick={() => {
+                        handleOfficeClick(office);
+                        setSearchTerm("");
+                      }}
+                    >
+                      <div
+                        className={`w-3 h-3 rounded-full mr-2 ${
+                          isOccupied ? "bg-red-500" : (isReserved ? "bg-blue-500" : "bg-gray-400")
+                        }`}
+                      ></div>
+                      <span className={`text-sm ${
+                        isOccupied ? "text-red-600 font-medium" : (isReserved ? "text-blue-600 font-medium" : "")
+                      }`}>
+                        {office}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
               <div className="mt-4 flex items-center justify-start gap-4 text-xs">
                 <div className="flex items-center">
-                  <div className="w-3 h-3 rounded-full bg-blue-500 mr-1"></div>
+                  <div className="w-3 h-3 rounded-full bg-gray-400 mr-1"></div>
                   <span>Available</span>
                 </div>
                 <div className="flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-blue-500 mr-1"></div>
+                  <span>Reserved (for selected date/time)</span>
+                </div>
+                <div className="flex items-center">
                   <div className="w-3 h-3 rounded-full bg-red-500 mr-1"></div>
-                  <span>Occupied/Reserved</span>
+                  <span>Occupied (generally unavailable)</span>
                 </div>
               </div>
-              {searchTerm && filteredAreas.length === 0 && (
-                <p className="text-sm text-gray-500 mt-2">No areas or rooms found</p>
+              {searchTerm && filteredPrivateOffices.length === 0 && (
+                <p className="text-sm text-gray-500 mt-2">No offices found</p>
               )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* Receipt Modal */}
-      {showReceipt && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-            <h2 className="text-xl font-medium">Confirm Reservation</h2>
-            <div className="space-y-2 text-sm">
-              <p><span className="text-gray-600">Date:</span> {selectedDate}</p>
-              <p><span className="text-gray-600">Time:</span> {selectedTime}</p>
-              <p><span className="text-gray-600">Area:</span> {selectedArea}</p>
-              <p><span className="text-gray-600">Rooms:</span> {selectedRooms.join(", ")}</p>
-              <p><span className="text-gray-600">Phone:</span> {phoneNumber}</p>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={handleFinalSubmit}
-                className="flex-1 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                Confirm
-              </button>
-              <button
-                onClick={() => setShowReceipt(false)}
-                className="flex-1 py-2 border rounded-md hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

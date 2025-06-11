@@ -59,7 +59,7 @@ export const sendRejectionEmail = async (clientData, reason) => {
 
 
 
-
+// for meeting room acceptance
 export const sendMeetingAcceptanceEmail = async (reservationData) => {
   const PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
   const SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
@@ -71,6 +71,11 @@ export const sendMeetingAcceptanceEmail = async (reservationData) => {
     );
     throw new Error('Email service configuration error.');
   }
+
+  // Format the totalCost for display in the email
+  const formattedTotalCost = reservationData.totalCost
+    ? reservationData.totalCost.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })
+    : 'N/A';
 
   const templateParams = {
     to_name: reservationData.name,
@@ -88,6 +93,9 @@ export const sendMeetingAcceptanceEmail = async (reservationData) => {
       : typeof reservationData.guests === 'string'
       ? reservationData.guests
       : 'N/A',
+    total_cost: formattedTotalCost, // <--- Add this line
+    // You might also want to add the room name for clarity in the email
+    room_name: reservationData.room, // <--- Add this line if 'room' is available in reservationData
   };
 
   try {
@@ -106,9 +114,11 @@ function formatTime24h(time) {
 
   let dateObj;
 
-  if (typeof time === 'object' && 'seconds' in time) {
+  // If time is a Firestore Timestamp object (has 'seconds' property)
+  if (typeof time === 'object' && time !== null && 'seconds' in time) {
     dateObj = new Date(time.seconds * 1000);
-  } else if (typeof time === 'string' && time.includes(':')) {
+  } else if (typeof time === 'string') {
+    // Handle string formats like "1:00 PM", "7:00 AM", or "13:00"
     const pmMatch = time.match(/(\d{1,2}):(\d{2})\s*pm/i);
     const amMatch = time.match(/(\d{1,2}):(\d{2})\s*am/i);
     let hour, min;
@@ -116,19 +126,24 @@ function formatTime24h(time) {
     if (pmMatch) {
       hour = parseInt(pmMatch[1], 10);
       min = parseInt(pmMatch[2], 10);
-      if (hour < 12) hour += 12;
+      if (hour < 12) hour += 12; // Convert PM hours (e.g., 1 PM to 13)
     } else if (amMatch) {
       hour = parseInt(amMatch[1], 10);
       min = parseInt(amMatch[2], 10);
-      if (hour === 12) hour = 0;
-    } else {
+      if (hour === 12) hour = 0; // Convert 12 AM to 0 (midnight)
+    } else if (time.includes(':')) {
+      // Assume 24-hour format if no AM/PM and has colon
       [hour, min] = time.split(':').map(Number);
+    } else {
+      // If it's just an hour like "07", assume minutes are 00
+      hour = parseInt(time, 10);
+      min = 0;
     }
 
-    dateObj = new Date();
+    dateObj = new Date(); // Use current date, but set hours and minutes
     dateObj.setHours(hour, min, 0, 0);
   } else {
-    return time;
+    return String(time); // Return as string if format is unexpected
   }
 
   const hh = dateObj.getHours().toString().padStart(2, '0');
@@ -142,7 +157,7 @@ function formatTime24h(time) {
 
 
 
-
+// For Expiry Tenants
 export const sendSubscriptionExpiryNotification = async (client) => {
   const PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
   const SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
@@ -171,3 +186,152 @@ export const sendSubscriptionExpiryNotification = async (client) => {
     return { success: false, error };
   }
 };
+
+
+
+
+
+
+// Dedicated Desk Booking Notification to Admin
+export async function sendBookingEmail(bookingDetails) {
+  const PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+  const SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+  const TEMPLATE_ID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ADMIN_BOOKING_ID;
+
+
+  if (!SERVICE_ID || !TEMPLATE_ID || !PUBLIC_KEY) {
+    console.error("EmailJS environment variables are not set.");
+    // Optionally throw an error or return false to indicate failure
+    throw new Error("Email service not configured. Please check environment variables.");
+  }
+
+  const templateParams = {
+    client_name: bookingDetails.name,
+    client_email: bookingDetails.email,
+    client_phone: bookingDetails.phone,
+    client_company: bookingDetails.company,
+    visit_date: bookingDetails.date,
+    client_details: bookingDetails.details,
+    reserved_seats: bookingDetails.selectedSeats.join(", "), // Join array into a string
+    // Add any other parameters your EmailJS template expects
+  };
+
+  try {
+    await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+    console.log("Email successfully sent to admin!");
+    return true; // Indicate success
+  } catch (error) {
+    console.error("Failed to send email to admin:", error);
+    throw error; // Re-throw the error to be caught by the calling component
+  }
+}
+
+
+
+
+// Meeting Room Reservation Notification to Admin
+export const sendReservationEmail = async (reservationDetails) => {
+  const PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+  const SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+  const TEMPLATE_ID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ADMIN_RESERVATION_ID;
+
+
+    // Basic validation for environment variables
+    if (!SERVICE_ID || !TEMPLATE_ID || !PUBLIC_KEY) {
+        console.error("EmailJS environment variables are not set up correctly.");
+        // Depending on your needs, you might want to throw an error or return false
+        return false;
+    }
+
+    // Prepare template parameters based on your EmailJS template
+    const templateParams = {
+        room_name: reservationDetails.room,
+        reservation_date: reservationDetails.date,
+        reservation_time: `${reservationDetails.from_time} - ${reservationDetails.to_time}`,
+        reservation_duration: reservationDetails.duration,
+        client_name: reservationDetails.name,
+        client_email: reservationDetails.email,
+        client_phone: reservationDetails.phone || 'N/A',
+        guest_list: reservationDetails.guests.length > 0 ? reservationDetails.guests.join(', ') : 'No guests',
+        special_requests: reservationDetails.specialRequests || 'None',
+        total_cost: reservationDetails.totalCost.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' }),
+    };
+
+    try {
+        const response = await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+        console.log('Email successfully sent!', response.status, response.text);
+        return true; // Indicate success
+    } catch (err) {
+        console.error('Failed to send email:', err);
+        return false; // Indicate failure
+    }
+};
+
+
+
+
+// Private office notification to admin
+export async function sendPrivateOfficeBookingEmail(bookingDetails) {
+  const PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+  const SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+  const TEMPLATE_ID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_PRIVATE_OFFICE_ID; // NEW TEMPLATE ID
+
+  if (!SERVICE_ID || !TEMPLATE_ID || !PUBLIC_KEY) {
+    console.error("EmailJS environment variables are not set for private office booking.");
+    throw new Error("Email service not configured. Please check environment variables.");
+  }
+
+  const templateParams = {
+    client_name: bookingDetails.name,
+    client_email: bookingDetails.email,
+    client_phone: bookingDetails.phone,
+    visit_date: bookingDetails.date,
+    visit_time: bookingDetails.time,
+    booked_offices: bookingDetails.selectedOffices.join(", "), // Array joined into string
+    // You can add more parameters here if your new template needs them
+    // e.g., client_company: bookingDetails.company || 'N/A',
+    // e.g., client_details: bookingDetails.details || 'None',
+  };
+
+  try {
+    await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+    console.log("Private office booking email successfully sent to admin!");
+    return true; // Indicate success
+  } catch (error) {
+    console.error("Failed to send private office booking email to admin:", error);
+    throw error; // Re-throw the error to be caught by the calling component
+  }
+}
+
+
+
+// for virtual office inquiry notification to admin
+export async function sendVirtualOfficeInquiryEmail(inquiryDetails) {
+  const PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+  const SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+  const TEMPLATE_ID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_VIRTUAL_OFFICE_INQUIRY_ID;
+
+  if (!SERVICE_ID || !TEMPLATE_ID || !PUBLIC_KEY) {
+    console.error("EmailJS environment variables are not fully set for virtual office inquiry.");
+    throw new Error("Email service not configured. Please check environment variables.");
+  }
+
+  const templateParams = {
+    client_name: inquiryDetails.name,
+    client_email: inquiryDetails.email,
+    client_phone: inquiryDetails.phone,
+    client_company: inquiryDetails.company || "N/A", // Default to N/A if not provided
+    client_position: inquiryDetails.position || "N/A", // Default to N/A if not provided
+    client_address: inquiryDetails.address || "N/A", // Default to N/A if not provided
+    // Add any other fields from your form that you want in the email
+  };
+
+  try {
+    await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+    console.log("Virtual office inquiry email successfully sent to admin!");
+    return true; // Indicate success
+  } catch (error) {
+    console.error("Failed to send virtual office inquiry email to admin:", error);
+    throw error; // Re-throw the error to be caught by the calling component
+  }
+}

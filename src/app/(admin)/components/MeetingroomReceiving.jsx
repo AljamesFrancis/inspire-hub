@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react"; // Import useRef
 import {
   collection,
   getDocs,
@@ -36,7 +36,6 @@ import {
 } from "@mui/material";
 import { Save, Close, Event, Schedule, InfoOutlined } from "@mui/icons-material";
 
-// --- Import the new RejectReasonModal ---
 import RejectReasonModal from "./RejectReason";
 
 // Utility to truncate a Date to minutes (zero out seconds and ms)
@@ -57,7 +56,7 @@ function normalizeDateField(date) {
   return "";
 }
 
-// Normalize Firestore Timestamp or string to "HH:mm" (local time)
+// Normalize Firestore Timestamp or string to "HH:mm" (24-hour format)
 function normalizeTimeField(time) {
   if (!time) return "";
   if (typeof time === "object" && "seconds" in time) {
@@ -70,48 +69,40 @@ function normalizeTimeField(time) {
   return "";
 }
 
-// Helper: create a local Date from date string and time string
+// Helper: create a local Date from date string (YYYY-MM-DD) and time string (HH:MM)
 function getLocalDateTime(dateStr, timeStr) {
   if (!dateStr || !timeStr) return null;
   const [year, month, day] = dateStr.split("-").map(Number);
-  let hour = 0, min = 0;
-  const pmMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*pm/i);
-  const amMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*am/i);
-  if (pmMatch) {
-    hour = parseInt(pmMatch[1], 10);
-    min = parseInt(pmMatch[2], 10);
-    if (hour < 12) hour += 12;
-  } else if (amMatch) {
-    hour = parseInt(amMatch[1], 10);
-    min = parseInt(amMatch[2], 10);
-    if (hour === 12) hour = 0;
-  } else {
-    [hour, min] = timeStr.split(":").map(Number);
-  }
+  const [hour, min] = timeStr.split(":").map(Number);
   return new Date(year, month - 1, day, hour, min, 0, 0);
 }
 
 // Helper to check if now between from_time and to_time (all in local time and at minute precision)
 const isCurrentMeeting = (res, nowLocal) => {
   if (res.status !== "accepted" || !res.date || !res.from_time || !res.to_time) return false;
-  const dateStr = normalizeDateField(res.date);
-  const from = normalizeTimeField(res.from_time).padStart(5, "0");
-  const to = normalizeTimeField(res.to_time).padStart(5, "0");
-  const start = getLocalDateTime(dateStr, from);
-  const end = getLocalDateTime(dateStr, to);
+  const dateStr = res.date;
+  const fromTimeStr = res.from_time;
+  const toTimeStr = res.to_time;
+
+  const start = getLocalDateTime(dateStr, fromTimeStr);
+  const end = getLocalDateTime(dateStr, toTimeStr);
+
   if (!start || !end) return false;
+
   const nowMin = truncateToMinutes(nowLocal);
   const startMin = truncateToMinutes(start);
   const endMin = truncateToMinutes(end);
+
   return nowMin >= startMin && nowMin < endMin;
 };
 
 // Helper to check if a meeting should be marked as done (now >= end time)
 function shouldBeDone(res, nowLocal) {
   if (res.status !== "accepted" || !res.date || !res.from_time || !res.to_time) return false;
-  const dateStr = normalizeDateField(res.date);
-  const to = normalizeTimeField(res.to_time).padStart(5, "0");
-  const end = getLocalDateTime(dateStr, to);
+  const dateStr = res.date;
+  const toTimeStr = res.to_time;
+
+  const end = getLocalDateTime(dateStr, toTimeStr);
   const nowMin = truncateToMinutes(nowLocal);
   return nowMin >= end;
 }
@@ -122,53 +113,61 @@ const AdminDashboard = () => {
   const [editedData, setEditedData] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [tabValue, setTabValue] = useState(0);
-  // --- New state for preventing double submissions ---
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // --- State for RejectReasonModal ---
   const [rejectReasonModalOpen, setRejectReasonModalOpen] = useState(false);
-  const [reservationToReject, setReservationToReject] = useState(null); // Stores the full reservation object
-
+  const [reservationToReject, setReservationToReject] = useState(null);
   const [detailsDialog, setDetailsDialog] = useState({ open: false, data: null });
+
+  // Use a ref to store the "current" local time, updated periodically
+  const nowLocalRef = useRef(truncateToMinutes(new Date()));
 
   const itemsPerPage = 10;
   const theme = useTheme();
 
-  // Use local time for now, truncated to minutes for display and comparison
-  const nowLocal = truncateToMinutes(new Date());
+  // Function to fetch and update reservations
+  const fetchAndUpdateReservations = async () => {
+    const snapshot = await getDocs(collection(db, "meeting room"));
+    const docs = snapshot.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        ...d,
+        date: normalizeDateField(d.date),
+        from_time: normalizeTimeField(d.from_time),
+        to_time: normalizeTimeField(d.to_time),
+      };
+    });
 
-  // Fetch reservations and update "done" status automatically
+    const updates = [];
+    docs.forEach((res) => {
+      // Check against the current time from the ref
+      if (shouldBeDone(res, nowLocalRef.current) && res.status === "accepted") {
+        updates.push(
+          updateDoc(doc(db, "meeting room", res.id), { status: "done" })
+        );
+        res.status = "done";
+      }
+    });
+    if (updates.length > 0) await Promise.all(updates);
+
+    setReservations(docs);
+  };
+
   useEffect(() => {
-    const fetchAndUpdateReservations = async () => {
-      const snapshot = await getDocs(collection(db, "meeting room"));
-      const docs = snapshot.docs.map((doc) => {
-        const d = doc.data();
-        return {
-          id: doc.id,
-          ...d,
-          date: normalizeDateField(d.date),
-          from_time: normalizeTimeField(d.from_time),
-          to_time: normalizeTimeField(d.to_time),
-        };
-      });
-
-      // Detect meetings that need to be marked "done"
-      const updates = [];
-      docs.forEach((res) => {
-        if (shouldBeDone(res, nowLocal) && res.status === "accepted") {
-          updates.push(
-            updateDoc(doc(db, "meeting room", res.id), { ...res, status: "done" })
-          );
-          res.status = "done"; // Optimistically update local state too
-        }
-      });
-      if (updates.length > 0) await Promise.all(updates);
-
-      setReservations(docs);
-    };
+    // Initial fetch
     fetchAndUpdateReservations();
-    // Optionally, add a timer to re-run periodically if needed
-  }, []);
+
+    // Set up a timer to update current time and refetch data periodically
+    // For example, every minute to check for ongoing/done meetings
+    const intervalId = setInterval(() => {
+      nowLocalRef.current = truncateToMinutes(new Date()); // Update the ref
+      // Re-run the fetch and update to re-evaluate meeting statuses
+      fetchAndUpdateReservations();
+    }, 60 * 1000); // Every 1 minute
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
+  }, []); // Empty dependency array means this effect runs once on mount
 
   const handleEdit = (res) => {
     setEditId(res.id);
@@ -194,17 +193,14 @@ const AdminDashboard = () => {
     setCurrentPage(1);
   };
 
-  // Tab logic:
-  // 0: Accepted Meetings (status: accepted, but not currently ongoing)
-  // 1: Upcoming Meetings (status: pending)
-  // 2: Current Meeting (status: accepted, and now between from_time and to_time)
+  // Filter reservations using the current time from the ref
   const filteredReservations = reservations.filter((res) => {
     if (tabValue === 0) {
-      return res.status === "accepted" && !isCurrentMeeting(res, nowLocal);
+      return res.status === "accepted" && !isCurrentMeeting(res, nowLocalRef.current) && res.status !== "done";
     } else if (tabValue === 1) {
       return res.status === "pending";
     } else if (tabValue === 2) {
-      return res.status === "accepted" && isCurrentMeeting(res, nowLocal);
+      return res.status === "accepted" && isCurrentMeeting(res, nowLocalRef.current);
     }
     return true;
   });
@@ -214,33 +210,24 @@ const AdminDashboard = () => {
   const currentItems = filteredReservations.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredReservations.length / itemsPerPage);
 
-  // Handle Accept
   const handleAccept = async (res) => {
-    // Prevent double submission
     if (isSubmitting) return;
-
-    setIsSubmitting(true); // Set submitting to true
+    setIsSubmitting(true);
     try {
-      // 1. Update status in Firestore
-      await updateDoc(doc(db, "meeting room", res.id), { ...res, status: "accepted" });
-
-      // 2. Send acceptance email using the imported function
-      await sendMeetingAcceptanceEmail(res); // Call the imported function
-
-      // 3. Update local state to reflect the change
+      await updateDoc(doc(db, "meeting room", res.id), { status: "accepted" });
+      await sendMeetingAcceptanceEmail(res);
       setReservations((prev) =>
         prev.map((r) => (r.id === res.id ? { ...r, status: "accepted" } : r))
       );
       alert("Meeting accepted and client notified!");
     } catch (error) {
       console.error("Error accepting meeting:", error);
-      alert(error.message || "Failed to accept meeting or send notification."); // Use error.message from the thrown error
+      alert(error.message || "Failed to accept meeting or send notification.");
     } finally {
-      setIsSubmitting(false); // Reset submitting to false
+      setIsSubmitting(false);
     }
   };
 
-  // --- New functions for RejectReasonModal ---
   const handleOpenRejectReasonModal = (res) => {
     setReservationToReject(res);
     setRejectReasonModalOpen(true);
@@ -252,27 +239,20 @@ const AdminDashboard = () => {
   };
 
   const handleConfirmReject = async (reason) => {
-    if (!reservationToReject) return; // Should not happen if modal is opened correctly
-    // Prevent double submission
+    if (!reservationToReject) return;
     if (isSubmitting) return;
 
-    setIsSubmitting(true); // Set submitting to true
+    setIsSubmitting(true);
     try {
-      // 1. Update status AND store the rejection reason in Firestore
       await updateDoc(doc(db, "meeting room", reservationToReject.id), {
         status: "rejected",
-        rejectionReason: reason // <-- Add this line
+        rejectionReason: reason
       });
-
-      // 2. Send rejection email using the imported function
-      // Pass the reservation data and the reason
       await sendRejectionEmail(reservationToReject, reason);
-
-      // 3. Update local state to reflect the change
       setReservations((prev) =>
         prev.map((r) =>
           r.id === reservationToReject.id
-            ? { ...r, status: "rejected", rejectionReason: reason } // <-- Update local state with reason too
+            ? { ...r, status: "rejected", rejectionReason: reason }
             : r
         )
       );
@@ -281,12 +261,11 @@ const AdminDashboard = () => {
       console.error("Error rejecting meeting:", error);
       alert(error.message || "Failed to reject meeting or send notification.");
     } finally {
-      handleCloseRejectReasonModal(); // Close modal regardless of success or failure
-      setIsSubmitting(false); // Reset submitting to false
+      handleCloseRejectReasonModal();
+      setIsSubmitting(false);
     }
   };
 
-  // Details Modal
   const handleOpenDetails = (data) => setDetailsDialog({ open: true, data });
   const handleCloseDetails = () => setDetailsDialog({ open: false, data: null });
 
@@ -340,16 +319,15 @@ const AdminDashboard = () => {
           </TableHead>
           <TableBody>
             {currentItems.map((res) => {
-              // Determine visual status for chip
               let chipLabel = "-";
               let chipColor = "default";
-              if (res.status === "accepted" && !isCurrentMeeting(res, nowLocal)) {
+              if (res.status === "accepted" && !isCurrentMeeting(res, nowLocalRef.current)) { // Use nowLocalRef.current
                 chipLabel = "Accepted";
                 chipColor = "success";
               } else if (res.status === "pending") {
                 chipLabel = "Pending";
                 chipColor = "warning";
-              } else if (res.status === "accepted" && isCurrentMeeting(res, nowLocal)) {
+              } else if (res.status === "accepted" && isCurrentMeeting(res, nowLocalRef.current)) { // Use nowLocalRef.current
                 chipLabel = "Ongoing";
                 chipColor = "info";
               }
@@ -404,7 +382,7 @@ const AdminDashboard = () => {
                         InputLabelProps={{ shrink: true }}
                       />
                     ) : res.date ? (
-                      new Date(res.date).toLocaleDateString("en-US", {
+                      new Date(res.date + 'T00:00:00').toLocaleDateString("en-US", {
                         year: "numeric",
                         month: "short",
                         day: "numeric",
@@ -417,28 +395,32 @@ const AdminDashboard = () => {
                     {editId === res.id ? (
                       <TextField
                         variant="standard"
+                        type="time"
                         value={editedData.from_time || ""}
                         onChange={(e) =>
                           setEditedData({ ...editedData, from_time: e.target.value })
                         }
                         size="small"
+                        InputLabelProps={{ shrink: true }}
                       />
                     ) : (
-                      new Date(res.from_time?.seconds * 1000).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) || "-"
+                      res.from_time || "-"
                     )}
                   </TableCell>
                   <TableCell align="center">
                     {editId === res.id ? (
                       <TextField
                         variant="standard"
+                        type="time"
                         value={editedData.to_time || ""}
                         onChange={(e) =>
                           setEditedData({ ...editedData, to_time: e.target.value })
                         }
                         size="small"
+                        InputLabelProps={{ shrink: true }}
                       />
                     ) : (
-                      new Date(res.to_time?.seconds * 1000).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) || "-"
+                      res.to_time || "-"
                     )}
                   </TableCell>
                   <TableCell align="center">
@@ -452,7 +434,7 @@ const AdminDashboard = () => {
                         size="small"
                       />
                     ) : res.duration ? (
-                      parseFloat(res.duration.replace(/[^\d.]/g, ""))
+                      res.duration
                     ) : (
                       "-"
                     )}
@@ -515,7 +497,7 @@ const AdminDashboard = () => {
                                 size="small"
                                 variant="contained"
                                 sx={{ minWidth: 0, px: 2, fontSize: "0.85rem", textTransform: "none" }}
-                                disabled={isSubmitting} // Disable button while submitting
+                                disabled={isSubmitting}
                               >
                                 Accept
                               </Button>
@@ -523,7 +505,6 @@ const AdminDashboard = () => {
                             <Tooltip title="Reject">
                               <Button
                                 color="error"
-                                // --- Change this to open the new modal ---
                                 onClick={() => handleOpenRejectReasonModal(res)}
                                 size="small"
                                 variant="contained"
@@ -533,7 +514,7 @@ const AdminDashboard = () => {
                                   fontSize: "0.85rem",
                                   textTransform: "none",
                                 }}
-                                disabled={isSubmitting} // Disable button while submitting
+                                disabled={isSubmitting}
                               >
                                 Reject
                               </Button>
@@ -606,16 +587,19 @@ const AdminDashboard = () => {
                 <strong>Email:</strong> {detailsDialog.data.email || "-"}
               </Typography>
               <Typography>
-                <strong>Date:</strong> {detailsDialog.data.date ? new Date(detailsDialog.data.date).toLocaleDateString("en-US") : "-"}
+                <strong>Date:</strong> {detailsDialog.data.date ? new Date(detailsDialog.data.date + 'T00:00:00').toLocaleDateString("en-US") : "-"}
               </Typography>
               <Typography>
-                <strong>From Time:</strong> {new Date(detailsDialog.data.from_time?.seconds * 1000).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) || "-"}
+                <strong>From Time:</strong> {detailsDialog.data.from_time || "-"}
               </Typography>
               <Typography>
-                <strong>To Time:</strong> {new Date(detailsDialog.data.to_time?.seconds * 1000).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) || "-"}
+                <strong>To Time:</strong> {detailsDialog.data.to_time || "-"}
               </Typography>
               <Typography>
                 <strong>Duration:</strong> {detailsDialog.data.duration || "-"}
+              </Typography>
+              <Typography>
+                <strong>Cost:</strong> {detailsDialog.data.totalCost || "-"}
               </Typography>
               <Typography>
                 <strong>Guests:</strong> {
@@ -639,12 +623,11 @@ const AdminDashboard = () => {
         </DialogActions>
       </Dialog>
 
-      {/* --- Add the RejectReasonModal component --- */}
       <RejectReasonModal
         open={rejectReasonModalOpen}
         onClose={handleCloseRejectReasonModal}
         onConfirm={handleConfirmReject}
-        isSubmitting={isSubmitting} // Pass isSubmitting to the modal if it has a confirm button
+        isSubmitting={isSubmitting}
       />
     </Box>
   );

@@ -113,6 +113,13 @@ export default function ReservationMeetingReportTabs() {
   const [selectedOffice, setSelectedOffice] = useState(null);
   const [officePage, setOfficePage] = useState(1);
 
+  // --- State for virtual office visits ---
+  const [virtualOfficeVisits, setVirtualOfficeVisits] = useState([]);
+  const [isLoadingVirtualOffice, setIsLoadingVirtualOffice] = useState(true);
+  const [modalOpenVirtualOffice, setModalOpenVirtualOffice] = useState(false);
+  const [selectedVirtualOffice, setSelectedVirtualOffice] = useState(null);
+  const [virtualOfficePage, setVirtualOfficePage] = useState(1);
+
   // --- Fetch visitMap reports ---
   useEffect(() => {
     let unsub = false;
@@ -254,6 +261,50 @@ export default function ReservationMeetingReportTabs() {
     };
   }, []);
 
+  // --- Fetch virtualOfficeVisits reports ---
+  useEffect(() => {
+    let unsub = false;
+    const fetchVirtualOfficeVisits = async () => {
+      setIsLoadingVirtualOffice(true);
+      const q = query(
+        collection(db, "virtualOfficeInquiry"),
+        where("status", "in", ["accepted", "rejected"])
+      );
+      const querySnapshot = await getDocs(q);
+      const docs = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      const allVirtualOfficeVisits = docs.map((doc) => ({
+        ...doc,
+        id: doc.id,
+        name: doc.name,
+        email: doc.email,
+        phone: doc.phone,
+        company: doc.company,
+        details: doc.details,
+        service: doc.service, // Assuming a 'service' field for virtual office
+        date: doc.date
+          ? doc.date.seconds
+            ? new Date(doc.date.seconds * 1000)
+            : new Date(doc.date)
+          : null,
+        status: doc.status === "accepted" ? "Accepted" : "Rejected",
+      }));
+      allVirtualOfficeVisits.sort(
+        (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
+      );
+      if (!unsub) {
+        setVirtualOfficeVisits(allVirtualOfficeVisits);
+        setIsLoadingVirtualOffice(false);
+      }
+    };
+    fetchVirtualOfficeVisits();
+    return () => {
+      unsub = true;
+    };
+  }, []);
+
   // --- Handlers ---
   const handleOpenModalRes = (client) => {
     setSelectedClient(client);
@@ -279,6 +330,14 @@ export default function ReservationMeetingReportTabs() {
     setModalOpenOffice(false);
     setSelectedOffice(null);
   };
+  const handleOpenModalVirtualOffice = (virtualOffice) => {
+    setSelectedVirtualOffice(virtualOffice);
+    setModalOpenVirtualOffice(true);
+  };
+  const handleCloseModalVirtualOffice = () => {
+    setModalOpenVirtualOffice(false);
+    setSelectedVirtualOffice(null);
+  };
 
   // --- Pagination logic ---
   const paginatedReservations = reservations.slice(
@@ -293,13 +352,28 @@ export default function ReservationMeetingReportTabs() {
     (officePage - 1) * ITEMS_PER_PAGE,
     officePage * ITEMS_PER_PAGE
   );
+  const paginatedVirtualOfficeVisits = virtualOfficeVisits.slice(
+    (virtualOfficePage - 1) * ITEMS_PER_PAGE,
+    virtualOfficePage * ITEMS_PER_PAGE
+  );
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Tabs value={tab} onChange={(_, v) => { setTab(v); setResPage(1); setMeetPage(1); setOfficePage(1); }} sx={{ mb: 3 }}>
+      <Tabs
+        value={tab}
+        onChange={(_, v) => {
+          setTab(v);
+          setResPage(1);
+          setMeetPage(1);
+          setOfficePage(1);
+          setVirtualOfficePage(1); // Reset virtual office page when changing tabs
+        }}
+        sx={{ mb: 3 }}
+      >
         <Tab label="Dedicated Desk Visit Schedule Report" />
         <Tab label="Private Office Visit Report" />
         <Tab label="Meeting Room Report" />
+        <Tab label="Virtual Office Report" /> {/* New Tab */}
       </Tabs>
 
       {/* --- Visit Schedule Report Tab --- */}
@@ -724,8 +798,8 @@ export default function ReservationMeetingReportTabs() {
                                 {Array.isArray(meeting.guests)
                                   ? meeting.guests.length
                                   : typeof meeting.guests === "string"
-                                  ? meeting.guests.split(",").filter(Boolean).length
-                                  : 0}
+                                    ? meeting.guests.split(",").filter(Boolean).length
+                                    : 0}
                               </Typography>
                             </TableCell>
                             <TableCell>
@@ -777,6 +851,162 @@ export default function ReservationMeetingReportTabs() {
                     count={Math.ceil(meetings.length / ITEMS_PER_PAGE)}
                     page={meetPage}
                     onChange={(_, val) => setMeetPage(val)}
+                    color="primary"
+                    showFirstButton
+                    showLastButton
+                  />
+                </Stack>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* --- Virtual Office Report Tab --- */}
+      {tab === 3 && (
+        <Card variant="outlined" sx={{ boxShadow: 2 }}>
+          <CardContent>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems={{ xs: "start", sm: "center" }}
+              flexDirection={{ xs: "column", sm: "row" }}
+              mb={3}
+            >
+              <Typography
+                variant="h5"
+                fontWeight="bold"
+                color="text.primary"
+                gutterBottom
+              >
+                Virtual Office Report
+              </Typography>
+            </Box>
+
+            {isLoadingVirtualOffice ? (
+              <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                minHeight={256}
+              >
+                <CircularProgress color="primary" size={56} thickness={4} />
+              </Box>
+            ) : (
+              <Box sx={{ overflowX: "auto" }}>
+                <TableContainer component={Paper}>
+                  <Table
+                    size="medium"
+                    sx={{
+                      borderCollapse: "collapse",
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+                    }}
+                  >
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Client
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Service
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Date &amp; Time
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Status
+                          </Typography>
+                        </TableCell>
+                        <TableCell />
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {paginatedVirtualOfficeVisits.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center">
+                            <Typography color="text.secondary">
+                              No virtual office visits found.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedVirtualOfficeVisits.map((virtualOffice) => (
+                          <TableRow
+                            key={virtualOffice.id}
+                            hover
+                            sx={{
+                              "&:hover": {
+                                backgroundColor: "action.hover",
+                              },
+                            }}
+                          >
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={500}>
+                                {virtualOffice.name}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {virtualOffice.service || "-"}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {virtualOffice.date
+                                  ? format(virtualOffice.date, "PPPpp")
+                                  : "N/A"}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={statusChipProps[virtualOffice.status].label}
+                                sx={{
+                                  ...statusChipProps[virtualOffice.status].style,
+                                  fontSize: "0.875rem",
+                                  borderRadius: "999px",
+                                  px: 1.5,
+                                }}
+                                size="small"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleOpenModalVirtualOffice(virtualOffice)}
+                                startIcon={<InfoOutlinedIcon />}
+                                sx={{
+                                  fontWeight: 600,
+                                  borderRadius: "999px",
+                                  textTransform: "none",
+                                  borderColor: blue[100],
+                                  color: blue[700],
+                                  "&:hover": {
+                                    backgroundColor: blue[50],
+                                  },
+                                }}
+                              >
+                                View Details
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Stack direction="row" justifyContent="center" mt={3}>
+                  <Pagination
+                    count={Math.ceil(virtualOfficeVisits.length / ITEMS_PER_PAGE)}
+                    page={virtualOfficePage}
+                    onChange={(_, val) => setVirtualOfficePage(val)}
                     color="primary"
                     showFirstButton
                     showLastButton
@@ -855,7 +1085,7 @@ export default function ReservationMeetingReportTabs() {
                 <Chip
                   label={statusChipProps[selectedClient.status]?.label || selectedClient.status}
                   sx={{
-                    ...statusChipProps[selectedClient.status],
+                    ...statusChipProps[selectedClient.status]?.style, // Corrected to use .style
                     fontWeight: 600,
                     px: 1.5,
                     borderRadius: "999px",
@@ -863,24 +1093,23 @@ export default function ReservationMeetingReportTabs() {
                   size="small"
                 />
               </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Rejection Reason
-                </Typography>
-                <Typography variant="body1">{selectedClient.rejectionReason || "-"}</Typography>
-              </Box>
-              <Divider />
+              {selectedClient.details && (
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Details
+                  </Typography>
+                  <Typography variant="body1">{selectedClient.details}</Typography>
+                </Box>
+              )}
             </Stack>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseModalRes} color="primary" variant="contained">
-            Close
-          </Button>
+          <Button onClick={handleCloseModalRes}>Close</Button>
         </DialogActions>
       </Dialog>
 
-      {/* --- Modal for office visit details --- */}
+      {/* --- Modal for office visit details (Private Office Visit) --- */}
       <Dialog
         open={modalOpenOffice}
         onClose={handleCloseModalOffice}
@@ -889,7 +1118,7 @@ export default function ReservationMeetingReportTabs() {
         aria-labelledby="office-details-title"
       >
         <DialogTitle id="office-details-title" sx={{ fontWeight: "bold", pb: 1 }}>
-          Office Visit Details
+          Private Office Visit Details
         </DialogTitle>
         <DialogContent dividers>
           {!selectedOffice ? (
@@ -922,9 +1151,11 @@ export default function ReservationMeetingReportTabs() {
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Office
+                  Office Number / Selected
                 </Typography>
-                <Typography variant="body1">{selectedOffice.officeNumber || selectedOffice.officeSelected || "-"}</Typography>
+                <Typography variant="body1">
+                  {selectedOffice.officeNumber || selectedOffice.officeSelected || "-"}
+                </Typography>
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">
@@ -937,9 +1168,9 @@ export default function ReservationMeetingReportTabs() {
                   Amenities
                 </Typography>
                 <Typography variant="body1">
-                  {selectedOffice.amenities && selectedOffice.amenities.length
+                  {Array.isArray(selectedOffice.amenities)
                     ? selectedOffice.amenities.join(", ")
-                    : "-"}
+                    : selectedOffice.amenities || "-"}
                 </Typography>
               </Box>
               <Box>
@@ -959,7 +1190,7 @@ export default function ReservationMeetingReportTabs() {
                 <Chip
                   label={statusChipProps[selectedOffice.status]?.label || selectedOffice.status}
                   sx={{
-                    ...statusChipProps[selectedOffice.status],
+                    ...statusChipProps[selectedOffice.status]?.style, // Corrected to use .style
                     fontWeight: 600,
                     px: 1.5,
                     borderRadius: "999px",
@@ -967,20 +1198,19 @@ export default function ReservationMeetingReportTabs() {
                   size="small"
                 />
               </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Rejection Reason
-                </Typography>
-                <Typography variant="body1">{selectedOffice.rejectionReason || "-"}</Typography>
-              </Box>
-              <Divider />
+              {selectedOffice.details && (
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Details
+                  </Typography>
+                  <Typography variant="body1">{selectedOffice.details}</Typography>
+                </Box>
+              )}
             </Stack>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseModalOffice} color="primary" variant="contained">
-            Close
-          </Button>
+          <Button onClick={handleCloseModalOffice}>Close</Button>
         </DialogActions>
       </Dialog>
 
@@ -1014,32 +1244,37 @@ export default function ReservationMeetingReportTabs() {
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Date
-                </Typography>
-                <Typography variant="body1">{formatDate(selectedMeeting.date)}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  From
-                </Typography>
-                <Typography variant="body1">{formatTime24h(selectedMeeting.from_time)}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  To
-                </Typography>
-                <Typography variant="body1">{formatTime24h(selectedMeeting.to_time)}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
                   Guests
                 </Typography>
                 <Typography variant="body1">
                   {Array.isArray(selectedMeeting.guests)
                     ? selectedMeeting.guests.join(", ")
-                    : typeof selectedMeeting.guests === "string"
-                    ? selectedMeeting.guests
-                    : "-"}
+                    : selectedMeeting.guests || "-"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Date
+                </Typography>
+                <Typography variant="body1">
+                  {formatDate(selectedMeeting.date)}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Time
+                </Typography>
+                <Typography variant="body1">
+                  {formatTime24h(selectedMeeting.from_time)} -{" "}
+                  {formatTime24h(selectedMeeting.to_time)}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Duration
+                </Typography>
+                <Typography variant="body1">
+                  {selectedMeeting.duration || "-"}
                 </Typography>
               </Box>
               <Box>
@@ -1047,27 +1282,15 @@ export default function ReservationMeetingReportTabs() {
                   Status
                 </Typography>
                 <Chip
-                  label={
-                    statusChipProps[selectedMeeting.status]
-                      ? statusChipProps[selectedMeeting.status].label
-                      : selectedMeeting.status
-                  }
+                  label={statusChipProps[selectedMeeting.status]?.label || selectedMeeting.status}
                   sx={{
-                    ...(statusChipProps[selectedMeeting.status]
-                      ? statusChipProps[selectedMeeting.status].style
-                      : {}),
+                    ...statusChipProps[selectedMeeting.status]?.style, // Corrected to use .style
                     fontWeight: 600,
                     px: 1.5,
                     borderRadius: "999px",
                   }}
                   size="small"
                 />
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Rejection Reason
-                </Typography>
-                <Typography variant="body1">{selectedMeeting.rejectionReason || "-"}</Typography>
               </Box>
               {selectedMeeting.details && (
                 <Box>
@@ -1077,14 +1300,98 @@ export default function ReservationMeetingReportTabs() {
                   <Typography variant="body1">{selectedMeeting.details}</Typography>
                 </Box>
               )}
-              <Divider />
             </Stack>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseModalMeet} color="primary" variant="contained">
-            Close
-          </Button>
+          <Button onClick={handleCloseModalMeet}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* --- Modal for virtual office details (Virtual Office) --- */}
+      <Dialog
+        open={modalOpenVirtualOffice}
+        onClose={handleCloseModalVirtualOffice}
+        maxWidth="xs"
+        fullWidth
+        aria-labelledby="virtual-office-details-title"
+      >
+        <DialogTitle id="virtual-office-details-title" sx={{ fontWeight: "bold", pb: 1 }}>
+          Virtual Office Details
+        </DialogTitle>
+        <DialogContent dividers>
+          {!selectedVirtualOffice ? (
+            <Typography>Loading...</Typography>
+          ) : (
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Name
+                </Typography>
+                <Typography variant="body1">{selectedVirtualOffice.name || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Email
+                </Typography>
+                <Typography variant="body1">{selectedVirtualOffice.email || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Phone
+                </Typography>
+                <Typography variant="body1">{selectedVirtualOffice.phone || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Company
+                </Typography>
+                <Typography variant="body1">{selectedVirtualOffice.company || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Service
+                </Typography>
+                <Typography variant="body1">{selectedVirtualOffice.service || "-"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Visit Date &amp; Time
+                </Typography>
+                <Typography variant="body1">
+                  {selectedVirtualOffice.date
+                    ? format(selectedVirtualOffice.date, "PPPpp")
+                    : "N/A"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Status
+                </Typography>
+                <Chip
+                  label={statusChipProps[selectedVirtualOffice.status]?.label || selectedVirtualOffice.status}
+                  sx={{
+                    ...statusChipProps[selectedVirtualOffice.status]?.style, // Corrected to use .style
+                    fontWeight: 600,
+                    px: 1.5,
+                    borderRadius: "999px",
+                  }}
+                  size="small"
+                />
+              </Box>
+              {selectedVirtualOffice.details && (
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Details
+                  </Typography>
+                  <Typography variant="body1">{selectedVirtualOffice.details}</Typography>
+                </Box>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseModalVirtualOffice}>Close</Button>
         </DialogActions>
       </Dialog>
     </Container>

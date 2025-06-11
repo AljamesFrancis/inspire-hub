@@ -43,7 +43,16 @@ export default function FourImageFullScreen() {
   const router = useRouter();
 
   return (
-    <div className="w-full h-screen grid grid-cols-2 grid-rows-2 gap-2">
+    <div className="w-full h-screen grid grid-cols-2 grid-rows-2 gap-2 relative"> {/* Added 'relative' here */}
+      
+      {/* Back Button */}
+      <button
+        onClick={() => router.push('/main')}
+        className="absolute top-4 left-4 z-10 px-4 py-2 bg-black/60 text-white rounded-full text-sm font-semibold hover:bg-black/80 transition-colors duration-300 shadow-lg mt-15"
+      >
+        Back
+      </button>
+
       {images.map((img) => (
         <div key={img.id} className="relative group overflow-hidden">
           <img
