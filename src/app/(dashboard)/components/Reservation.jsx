@@ -7,6 +7,7 @@ import { FiPlus, FiTrash2, FiClock, FiUser, FiMail, FiPhone, FiCalendar, FiInfo,
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useSearchParams } from "next/navigation";
+import { sendReservationEmail  } from "../../(admin)/utils/email";
 
 // Meeting room info (for dynamic display/rates)
 const MEETING_ROOMS = {
@@ -33,10 +34,10 @@ const initialTimeSlots = [
 ];
 
 const statusStyles = {
-  available: "bg-white border border-gray-300 hover:bg-blue-50 cursor-pointer",
-  selected: "bg-blue-500 text-white border border-blue-600 cursor-pointer",
+  available: "bg-white border border-gray-300",
+  selected: "bg-blue-500 text-white border border-blue-600",
   busy: "bg-gray-200 border border-gray-300 cursor-not-allowed",
-  "after-hours": "bg-gray-100 border border-gray-300 bg-[repeating-linear-gradient(45deg,_#f0f0f0_0,_#f0f0f0_5px,_#fff_5px,_#fff_10px)] hover:bg-blue-50 cursor-pointer",
+  "after-hours": "bg-gray-100 border border-gray-300 bg-[repeating-linear-gradient(45deg,_#f0f0f0_0,_#f0f0f0_5px,_#fff_5px,_#fff_10px)]",
 };
 
 const statusLabels = {
@@ -93,22 +94,17 @@ export default function TimeSlotSchedule() {
       return;
     }
 
-    const newSlots = slots.map((slot) => {
+    const newSlots = initialTimeSlots.map((slot) => {
       const slotHour = parseInt(slot.time);
       if (
         slotHour >= startHour &&
-        slotHour < endHour &&
-        (slot.status === "available" || slot.status === "after-hours")
+        slotHour < endHour
       ) {
-        return { ...slot, status: "selected" };
-      }
-      if (
-        slot.status === "selected" &&
-        (slotHour < startHour || slotHour >= endHour)
-      ) {
-        return slot.time >= "17"
-          ? { ...slot, status: "after-hours" }
-          : { ...slot, status: "available" };
+        if (slot.status === "busy") {
+          return { ...slot, status: "busy" };
+        } else {
+          return { ...slot, status: "selected" };
+        }
       }
       return slot;
     });
@@ -132,6 +128,7 @@ export default function TimeSlotSchedule() {
         position: "top-center",
         autoClose: 3000,
       });
+      setSlots(initialTimeSlots);
       return;
     }
 
@@ -163,13 +160,15 @@ export default function TimeSlotSchedule() {
     const updatedFormData = { ...formData, [name]: value };
     setFormData(updatedFormData);
 
-    if (name === "time" || name === "duration") {
+    if ((name === "time" && updatedFormData.duration) || (name === "duration" && updatedFormData.time)) {
       setTimeout(() => {
         updateSelectedSlots(
-          name === "time" ? value : updatedFormData.time,
-          name === "duration" ? value : updatedFormData.duration
+          updatedFormData.time,
+          updatedFormData.duration
         );
       }, 0);
+    } else if (name === "time" || name === "duration") {
+      setSlots(initialTimeSlots);
     }
   };
 
@@ -203,11 +202,15 @@ export default function TimeSlotSchedule() {
     let total = baseRate * duration;
     if (formData.time) {
       const startHour = parseInt(toMilitaryTime(formData.time).split(":")[0]);
-      if (startHour >= 17 || (startHour + duration) > 17) {
-        total *= 1.2;
+      const selectedEndHour = startHour + duration;
+      const afterHoursOverlap = Math.max(0, Math.min(selectedEndHour, 20) - Math.max(startHour, 17));
+
+      if (afterHoursOverlap > 0) {
+        const regularHoursDuration = duration - afterHoursOverlap;
+        total = (baseRate * regularHoursDuration) + (baseRate * afterHoursOverlap * 1.2);
       }
     }
-    return total.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' });
+    return total;
   };
 
   const handleSubmit = async (e) => {
@@ -220,22 +223,50 @@ export default function TimeSlotSchedule() {
       return;
     }
 
-    const selectedSlots = slots
+    const startHour = parseInt(toMilitaryTime(formData.time).split(":")[0]);
+    const durationHours = parseInt(formData.duration);
+    const endHour = startHour + durationHours;
+
+    const hasBusyConflict = slots.some((slot) => {
+      const slotHour = parseInt(slot.time);
+      return (
+        slotHour >= startHour &&
+        slotHour < endHour &&
+        slot.status === "busy"
+      );
+    });
+
+    if (hasBusyConflict) {
+      toast.error("Your selected time now overlaps with unavailable slots. Please review.", {
+        position: "top-center",
+        autoClose: 5000,
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    const selectedSlotsDisplay = slots
       .filter((slot) => slot.status === "selected")
       .map((s) => s.time)
       .join(", ");
 
     const militaryTime = toMilitaryTime(formData.time);
     const [fromHour, fromMin] = militaryTime.split(":").map(Number);
-    const durationHours = parseInt(formData.duration);
-    const toHour = fromHour + durationHours;
+    const durationHoursFinal = parseInt(formData.duration);
+    const toHour = fromHour + durationHoursFinal;
     const toTime = `${toHour.toString().padStart(2, "0")}:${fromMin.toString().padStart(2, "0")}`;
 
     const reservationData = {
-      ...formData,
-      room: room.name,
+      name: formData.name,
+      email: formData.email,
+      phone: formData.phone,
+      date: formData.date,
       time: militaryTime,
-      selectedSlots,
+      duration: formData.duration,
+      guests: formData.guests.filter(guest => guest.trim() !== ''),
+      specialRequests: formData.specialRequests,
+      room: room.name,
+      selectedSlots: selectedSlotsDisplay,
       from_time: militaryTime,
       to_time: toTime,
       timestamp: new Date(),
@@ -246,6 +277,15 @@ export default function TimeSlotSchedule() {
     try {
       await addDoc(collection(db, "meeting room"), reservationData);
       toast.success("Reservation submitted successfully!", { position: "top-center" });
+
+      // Send email after successful Firebase submission
+      const emailSent = await sendReservationEmail(reservationData);
+      if (emailSent) {
+        toast.info("Confirmation email sent!", { position: "top-center" });
+      } else {
+        toast.error("Failed to send confirmation email.", { position: "top-center" });
+      }
+
       setFormData({
         name: "",
         email: "",
@@ -258,28 +298,11 @@ export default function TimeSlotSchedule() {
       });
       setSlots(initialTimeSlots);
     } catch (error) {
-      console.error("Error adding reservation: ", error);
+      console.error("Error adding reservation or sending email: ", error);
       toast.error("Failed to submit reservation. Please try again.", { position: "top-center" });
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleSlotClick = (index) => {
-    const slot = slots[index];
-    if (slot.status === "busy") return;
-
-    setSlots((prev) =>
-      prev.map((slot, i) =>
-        i === index && slot.status === "available"
-          ? { ...slot, status: "selected" }
-          : i === index && slot.status === "selected"
-          ? { ...slot, status: "available" }
-          : i === index && slot.status === "after-hours"
-          ? { ...slot, status: "selected" }
-          : slot
-      )
-    );
   };
 
   return (
@@ -444,18 +467,15 @@ export default function TimeSlotSchedule() {
                 <span className="text-sm text-gray-500">7:00 AM</span>
                 <div className="flex-1 flex border border-gray-200 rounded-md overflow-hidden">
                   {slots.map((slot, idx) => (
-                    <button
+                    <div
                       key={idx}
-                      type="button"
-                      onClick={() => handleSlotClick(idx)}
                       className={`flex-1 h-12 flex items-center justify-center transition-colors ${statusStyles[slot.status]}`}
-                      disabled={slot.status === "busy"}
                       title={statusLabels[slot.status]}
                     >
                       <span className={`text-xs font-medium ${slot.status === "selected" ? "text-white" : "text-gray-700"}`}>
                         {slot.time}:00
                       </span>
-                    </button>
+                    </div>
                   ))}
                 </div>
                 <span className="text-sm text-gray-500">8:00 PM</span>
@@ -528,7 +548,7 @@ export default function TimeSlotSchedule() {
                   <p className="text-sm text-gray-500">Includes all applicable charges</p>
                 </div>
                 <div className="text-2xl font-bold text-blue-600">
-                  {calculateTotalCost()}
+                  {calculateTotalCost().toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
                 </div>
               </div>
               

@@ -26,7 +26,7 @@ import {
   HiOutlineUserRemove,
   HiOutlineClock,
   HiOutlineOfficeBuilding,
-  HiOutlineCalendar, // Added for expiry icon
+  HiOutlineCalendar,
 } from "react-icons/hi";
 import { FaChair, FaRegCalendarAlt } from "react-icons/fa";
 import { MdOutlineEventNote, MdMeetingRoom } from "react-icons/md";
@@ -38,7 +38,7 @@ const totalSeats = seatMap1.length + seatMap2.length + seatMap3.length + seatMap
 
 const Dashboard = () => {
   const [seatData, setSeatData] = useState([]);
-  const [visitData, setVisitData] = useState([]);
+  const [visitData, setVisitData] = useState([]); // Kept for existing chart usage, but `allPendingVisits` is primary for the list
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [occupiedSeats, setOccupiedSeats] = useState([]);
@@ -48,7 +48,8 @@ const Dashboard = () => {
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [showVisitModal, setShowVisitModal] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [expiringTenants, setExpiringTenants] = useState([]); // New state for expiring tenants
+  const [expiringTenants, setExpiringTenants] = useState([]);
+  const [allPendingVisits, setAllPendingVisits] = useState([]); // New state for all pending visits
 
   // Format time helper
   const formatTime = useCallback((timeString) => {
@@ -96,13 +97,16 @@ const Dashboard = () => {
         const collectionsToFetch = [
           { name: "seatMap", setState: setSeatData, isTenant: true, type: "Dedicated Desk" },
           { name: "privateOffice", setState: setPrivateOfficeList, isTenant: true, type: "Private Office" },
-          { name: "virtualOffice", isTenant: true, type: "Virtual Office" }, // Assuming virtualOffice for virtual tenants
-          { name: "visitMap", setState: setVisitData, isTenant: false },
+          { name: "virtualOffice", isTenant: true, type: "Virtual Office" },
+          { name: "visitMap", isTenant: false, visitType: "Dedicated Desk Visit" },
+          { name: "privateOfficeVisits", isTenant: false, visitType: "Private Office Visit" },
+          { name: "virtualOfficeInquiry", isTenant: false, visitType: "Virtual Office Inquiry" },
         ];
 
         let allSelectedSeats = [];
         let allSelectedPO = [];
         let currentExpiringTenants = [];
+        let pendingVisitsAcrossCollections = [];
 
         for (const config of collectionsToFetch) {
           const querySnapshot = await getDocs(collection(db, config.name));
@@ -131,7 +135,7 @@ const Dashboard = () => {
             });
           }
 
-          // Handle specific data extractions for cards/charts
+          // Handle specific data extractions for cards/charts and pending visits
           if (config.name === "seatMap") {
             allSelectedSeats = docs.flatMap(doc =>
               doc.selectedSeats || []
@@ -149,8 +153,8 @@ const Dashboard = () => {
               }
             });
             setOccupiedPrivateOffices(allSelectedPO);
-          } else if (config.name === "visitMap") {
-            const pendingVisits = docs.filter(visit => visit.status === "pending").map(visit => {
+          } else if (["visitMap", "privateOfficeVisits", "virtualOfficeInquiry"].includes(config.name)) {
+            const pending = docs.filter(visit => visit.status === "pending").map(visit => {
               let formattedDate = '';
               if (visit.date) {
                 if (typeof visit.date.toDate === "function") {
@@ -167,13 +171,17 @@ const Dashboard = () => {
                 id: visit.id,
                 ...visit,
                 date: formattedDate,
-                time: formatTime(visit.time)
+                time: formatTime(visit.time),
+                collection: config.name, // Add the collection name for later reference
+                displayType: config.visitType // Add a display type for the UI
               };
             });
-            setVisitData(pendingVisits);
+            pendingVisitsAcrossCollections.push(...pending);
           }
         }
-        setExpiringTenants(currentExpiringTenants.sort((a, b) => a.daysRemaining - b.daysRemaining)); // Sort by days remaining
+        setExpiringTenants(currentExpiringTenants.sort((a, b) => a.daysRemaining - b.daysRemaining));
+        setAllPendingVisits(pendingVisitsAcrossCollections); // Set the new state for all pending visits
+        setVisitData(pendingVisitsAcrossCollections); // Keep this for existing visit data usage in charts/lists
 
         setLastUpdated(new Date());
         setLoading(false);
@@ -189,13 +197,13 @@ const Dashboard = () => {
     // Refresh data every 60 seconds
     const interval = setInterval(fetchAllData, 60000);
     return () => clearInterval(interval);
-  }, [formatTime, calculateDaysRemaining]); // Add formatTime and calculateDaysRemaining to dependencies
+  }, [formatTime, calculateDaysRemaining]);
 
 
   // Fetch detailed visit information
-  const fetchVisitDetails = async (visitId) => {
+  const fetchVisitDetails = async (visitId, collectionName) => {
     try {
-      const visitDoc = await getDoc(doc(db, "visitMap", visitId));
+      const visitDoc = await getDoc(doc(db, collectionName, visitId));
       if (visitDoc.exists()) {
         const visitData = visitDoc.data();
         let formattedDate = '';
@@ -215,7 +223,8 @@ const Dashboard = () => {
           id: visitDoc.id,
           ...visitData,
           date: formattedDate,
-          time: formatTime(visitData.time)
+          time: formatTime(visitData.time),
+          collection: collectionName, // Pass collection name to modal
         });
         setShowVisitModal(true);
       }
@@ -242,7 +251,7 @@ const Dashboard = () => {
     "Pending Visits": value
   }));
 
-  const totalPendingVisits = visitData.length;
+  const totalPendingVisits = allPendingVisits.length; // Use allPendingVisits here
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -511,12 +520,12 @@ const Dashboard = () => {
           </div>
         </div>
         <div className="divide-y divide-gray-200">
-          {visitData.length > 0 ? (
-            visitData.map((visit) => (
+          {allPendingVisits.length > 0 ? (
+            allPendingVisits.map((visit) => (
               <div
-                key={visit.id}
+                key={`${visit.collection}-${visit.id}`}
                 className="px-6 py-4 hover:bg-gray-50 transition cursor-pointer"
-                onClick={() => fetchVisitDetails(visit.id)}
+                onClick={() => fetchVisitDetails(visit.id, visit.collection)}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
@@ -542,7 +551,7 @@ const Dashboard = () => {
                       </div>
                     )}
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      Pending
+                      {visit.displayType || 'Pending'}
                     </span>
                   </div>
                 </div>
@@ -630,6 +639,13 @@ const Dashboard = () => {
                   <div className="sm:col-span-2">
                     <p className="text-sm font-medium text-gray-500">Additional Information</p>
                     <p className="mt-1 text-sm text-gray-900">{selectedVisit.additionalInfo}</p>
+                  </div>
+                )}
+
+                {selectedVisit.collection && (
+                  <div className="sm:col-span-2">
+                    <p className="text-sm font-medium text-gray-500">Source Collection</p>
+                    <p className="mt-1 text-sm text-gray-900">{selectedVisit.collection}</p>
                   </div>
                 )}
               </div>

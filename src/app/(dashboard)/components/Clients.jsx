@@ -9,9 +9,8 @@ import seatMap2 from "../../(admin)/seatMap2.json";
 import seatMap3 from "../../(admin)/seatMap3.json";
 import seatMap4 from "../../(admin)/seatMap4.json";
 import seatMap5 from "../../(admin)/seatMap5.json";
-
-// Import Firebase Auth
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { sendBookingEmail } from "../../(admin)/utils/email";
 
 // --- Utility functions ---
 function groupIntoPairs(entries) {
@@ -35,11 +34,21 @@ const groupedSeats3 = groupSeatsByRow(seatMap3);
 const groupedSeats4 = groupSeatsByRow(seatMap4);
 const groupedSeats5 = groupSeatsByRow(seatMap5);
 
-const rowEntries1 = Object.entries(groupedSeats1).sort(([a], [b]) => a.localeCompare(b));
-const rowEntries2 = Object.entries(groupedSeats2).sort(([a], [b]) => a.localeCompare(b));
-const rowEntries3 = Object.entries(groupedSeats3).sort(([a], [b]) => a.localeCompare(b));
-const rowEntries4 = Object.entries(groupedSeats4).sort(([a], [b]) => a.localeCompare(b));
-const rowEntries5 = Object.entries(groupedSeats5).sort(([a], [b]) => a.localeCompare(b));
+const rowEntries1 = Object.entries(groupedSeats1).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
+const rowEntries2 = Object.entries(groupedSeats2).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
+const rowEntries3 = Object.entries(groupedSeats3).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
+const rowEntries4 = Object.entries(groupedSeats4).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
+const rowEntries5 = Object.entries(groupedSeats5).sort(([a], [b]) =>
+  a.localeCompare(b)
+);
 
 const groupPairs1 = groupIntoPairs(rowEntries1);
 const groupPairs2 = groupIntoPairs(rowEntries2);
@@ -70,38 +79,36 @@ function SeatReservationForm() {
 
   // --- USER PROFILE STATE ---
   useEffect(() => {
-    // Fetch user info from Firebase Auth and (optionally) Firestore profile
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Set basic auth info
         setForm((prev) => ({
           ...prev,
           name: user.displayName || "",
           email: user.email || "",
           phone: user.phoneNumber || "",
         }));
-        // Optionally fetch company info from a user profile in Firestore (if you have such a collection)
         try {
           const userProfileSnap = await getDocs(collection(db, "users"));
-          const userProfileArr = userProfileSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          const userProfileArr = userProfileSnap.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
           const found = userProfileArr.find(
             (u) =>
-              (u.uid && u.uid === user.uid) ||
-              (u.email && u.email === user.email)
+              (u.uid && u.uid === user.uid) || (u.email && u.email === user.email)
           );
           if (found) {
             setForm((prev) => ({
               ...prev,
               company: found.company || prev.company,
-              // Optionally override name/phone/email if your users collection is more up-to-date:
               name: found.name || prev.name,
               phone: found.phone || prev.phone,
               email: found.email || prev.email,
             }));
           }
         } catch (e) {
-          // Ignore errors, keep auth info only if Firestore fails
+          console.error("Error fetching user profile:", e);
         }
       }
     });
@@ -121,6 +128,7 @@ function SeatReservationForm() {
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
+
   const handleSeatClick = (mapType, seat) => {
     const seatKey = `${mapType}-${seat.number}`;
     if (occupiedSeats.includes(seatKey)) return;
@@ -130,29 +138,51 @@ function SeatReservationForm() {
       setSelectedSeats([...selectedSeats, seatKey]);
     }
   };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.phone || selectedSeats.length === 0) {
       alert("Please fill in your details and select at least one seat.");
       return;
     }
-    await addDoc(collection(db, "visitMap"), {
-      ...form,
-      reservedSeats: selectedSeats,
-      status: "pending",
-      date: form.date ? new Date(form.date) : null,
-      createdAt: new Date(),
-    });
-    alert("Reservation request submitted!");
-    setForm({
-      name: "",
-      email: "",
-      phone: "",
-      company: "",
-      details: "",
-      date: "",
-    });
-    setSelectedSeats([]);
+
+    try {
+      // 1. Add reservation to Firestore
+      await addDoc(collection(db, "visitMap"), {
+        ...form,
+        reservedSeats: selectedSeats,
+        status: "pending",
+        date: form.date ? new Date(form.date) : null,
+        createdAt: new Date(),
+      });
+
+      // 2. Send email to admin using the utility function
+      await sendBookingEmail({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        company: form.company,
+        details: form.details,
+        date: form.date,
+        selectedSeats: selectedSeats,
+      });
+
+      alert("Reservation request submitted and email sent to admin!");
+      setForm({
+        name: "",
+        email: "",
+        phone: "",
+        company: "",
+        details: "",
+        date: "",
+      });
+      setSelectedSeats([]);
+    } catch (error) {
+      console.error("Error submitting reservation or sending email:", error);
+      alert(
+        "There was an error submitting your reservation or sending the email. Please try again."
+      );
+    }
   };
 
   const renderSeatMap = (groupPairs, mapType, title) => (
@@ -195,7 +225,11 @@ function SeatReservationForm() {
                         onClick={() => handleSeatClick(mapType, seat)}
                         className={`flex flex-col items-center justify-center rounded border text-xs font-semibold px-2 py-1 min-w-[32px] min-h-[30px] transition
                           ${seatColor}
-                          ${occupied ? "cursor-not-allowed opacity-70" : "hover:bg-blue-500 hover:text-white"}
+                          ${
+                            occupied
+                              ? "cursor-not-allowed opacity-70"
+                              : "hover:bg-blue-500 hover:text-white"
+                          }
                         `}
                       >
                         <Monitor size={12} className="mb-0.5" />
@@ -225,83 +259,121 @@ function SeatReservationForm() {
         >
           Back
         </button>
-        <h1 className="text-2xl font-bold text-center mb-4">Reserve a Seat</h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Full Name *</label>
-              <input
-                type="text"
-                name="name"
-                value={form.name}
-                required
-                onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-                autoComplete="name"
-              />
+        <h1 className="text-2xl font-bold text-center mb-4">Reserve a Seat Visit</h1>
+
+        {/* Form Section */}
+        <div className="w-full mb-8"> {/* Added mb-8 for spacing below the form */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={form.name}
+                  required
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoComplete="name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Email *
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  required
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoComplete="email"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Phone *
+                </label>
+                <input
+                  type="text"
+                  name="phone"
+                  value={form.phone}
+                  required
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoComplete="tel"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Company
+                </label>
+                <input
+                  type="text"
+                  name="company"
+                  value={form.company}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoComplete="organization"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Visit Date
+                </label>
+                <input
+                  type="date"
+                  name="date"
+                  value={form.date}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Details
+                </label>
+                <input
+                  type="text"
+                  name="details"
+                  value={form.details}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Email *</label>
-              <input
-                type="email"
-                name="email"
-                value={form.email}
-                required
-                onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-                autoComplete="email"
-              />
+
+            <div className="flex justify-center">
+              <button
+                type="submit"
+                disabled={
+                  !form.name || !form.email || !form.phone || selectedSeats.length === 0
+                }
+                className="w-48 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Submit Reservation
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Phone *</label>
-              <input
-                type="text"
-                name="phone"
-                value={form.phone}
-                required
-                onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-                autoComplete="tel"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Company</label>
-              <input
-                type="text"
-                name="company"
-                value={form.company}
-                onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-                autoComplete="organization"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Visit Date</label>
-              <input
-                type="date"
-                name="date"
-                value={form.date}
-                onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Details</label>
-              <input
-                type="text"
-                name="details"
-                value={form.details}
-                onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
+          </form>
+        </div>
+
+        {/* Seatmap Section */}
+        <div className="w-full">
           <div className="mb-2 text-center">
             <div className="font-medium mb-2">Select your seats</div>
             <div className="flex flex-wrap gap-2 justify-center mb-4">
-              <span className="inline-flex items-center px-2 py-1 text-xs rounded bg-red-400 text-white border border-red-500">Occupied</span>
-              <span className="inline-flex items-center px-2 py-1 text-xs rounded bg-blue-600 text-white border border-blue-700">Selected</span>
-              <span className="inline-flex items-center px-2 py-1 text-xs rounded bg-gray-100 border border-gray-300 text-gray-700">Vacant</span>
+              <span className="inline-flex items-center px-2 py-1 text-xs rounded bg-red-400 text-white border border-red-500">
+                Occupied
+              </span>
+              <span className="inline-flex items-center px-2 py-1 text-xs rounded bg-blue-600 text-white border border-blue-700">
+                Selected
+              </span>
+              <span className="inline-flex items-center px-2 py-1 text-xs rounded bg-gray-100 border border-gray-300 text-gray-700">
+                Vacant
+              </span>
             </div>
             <div className="flex flex-col md:flex-row gap-4 justify-center items-stretch">
               {seatMaps.map((map) => (
@@ -311,16 +383,7 @@ function SeatReservationForm() {
               ))}
             </div>
           </div>
-          <div className="flex justify-center">
-            <button
-              type="submit"
-              disabled={!form.name || !form.email || !form.phone || selectedSeats.length === 0}
-              className="w-48 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              Submit Reservation
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   );

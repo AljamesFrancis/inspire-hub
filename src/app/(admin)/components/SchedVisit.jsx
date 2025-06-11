@@ -9,8 +9,6 @@ import {
   updateDoc,
   getDoc,
 } from "firebase/firestore";
-// Remove the problematic line: import React, { useState, useEffect } => {
-// The correct import for React and its hooks is already present inside the component.
 
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -55,10 +53,11 @@ import {
   Event as EventIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  Business as BusinessIcon,
+  Business as BusinessIcon, // Used for Virtual Office tab icon
   Info as InfoIcon,
   MeetingRoom as OfficeIcon,
-  Chair as SeatIcon
+  Chair as SeatIcon,
+  Home as HomeIcon // Icon for address
 } from '@mui/icons-material';
 import { useState, useEffect } from "react";
 
@@ -153,21 +152,21 @@ const groupPairs4 = groupIntoPairs(rowEntries4);
 const groupPairs5 = groupIntoPairs(rowEntries5);
 
 export default function ClientsPage() {
-  // Correct React import and hooks usage
-  const [clients, setClients] = useState([]);
-  const [visitClients, setVisitClients] = useState([]);
-  const [officeVisitClients, setOfficeVisitClients] = useState([]);
+  const [clients, setClients] = useState([]); // This seems to be for occupied seats data
+  const [visitClients, setVisitClients] = useState([]); // For seat visit requests (visitMap)
+  const [officeVisitClients, setOfficeVisitClients] = useState([]); // For private office visit requests (privateOfficeVisits)
+  // NEW STATE: For virtual office inquiry requests
+  const [virtualOfficeInquiryClients, setVirtualOfficeInquiryClients] = useState([]);
+
   const [selectedClientId, setSelectedClientId] = useState(null);
+  // activeTab now goes up to 2 (0: Seats, 1: Offices, 2: Virtual)
   const [activeTab, setActiveTab] = useState(0);
 
-  // New state for the rejection modal
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
 
-  // New states for managing submission loading
   const [isAccepting, setIsAccepting] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
-
 
   useEffect(() => {
     async function fetchOccupiedSeats() {
@@ -203,63 +202,95 @@ export default function ClientsPage() {
     setOfficeVisitClients(docs);
   };
 
+  // NEW: Fetch virtual office inquiry requests
+  const fetchVirtualOfficeInquiryData = async () => {
+    const q = query(collection(db, "virtualOfficeInquiry"), where("status", "==", "pending"));
+    const querySnapshot = await getDocs(q);
+    const docs = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setVirtualOfficeInquiryClients(docs);
+  };
+
   useEffect(() => {
     fetchVisitData();
     fetchOfficeVisitData();
+    fetchVirtualOfficeInquiryData(); // Call the new fetch function
   }, []);
 
-  const handleAcceptVisit = async (visitId, isOffice = false) => {
-    if (!visitId || isAccepting) return; // Prevent double-click
-    setIsAccepting(true); // Start loading
+  const handleAcceptVisit = async (visitId) => { // Removed isOffice param, determine collection from activeTab
+    if (!visitId || isAccepting) return;
+    setIsAccepting(true);
 
     try {
-      const collectionName = isOffice ? "privateOfficeVisits" : "visitMap";
+      let collectionName;
+      if (activeTab === 0) {
+        collectionName = "visitMap";
+      } else if (activeTab === 1) {
+        collectionName = "privateOfficeVisits";
+      } else if (activeTab === 2) { // New tab for virtualOfficeInquiry
+        collectionName = "virtualOfficeInquiry";
+      }
+
       await accept(visitId, collectionName);
 
-      if (isOffice) {
-        await fetchOfficeVisitData();
-      } else {
+      // Re-fetch data for the currently active tab
+      if (activeTab === 0) {
         await fetchVisitData();
+      } else if (activeTab === 1) {
+        await fetchOfficeVisitData();
+      } else if (activeTab === 2) {
+        await fetchVirtualOfficeInquiryData();
       }
       setSelectedClientId(null);
-      alert("Visit accepted and client notified!");
+      alert("Request accepted and client notified!");
     } catch (error) {
       console.error("Error in acceptVisit:", error);
-      alert(error.message || "Visit was accepted but failed to notify client.");
+      alert(error.message || "Request was accepted but failed to notify client.");
     } finally {
-      setIsAccepting(false); // End loading
+      setIsAccepting(false);
     }
   };
 
-  // Function to open the rejection modal
   const handleRejectClick = () => {
-    if (isRejecting) return; // Prevent opening multiple modals
+    if (isRejecting) return;
     setShowRejectModal(true);
   };
 
-  // Function to handle confirmation from the rejection modal
   const handleConfirmReject = async (reason) => {
-    setShowRejectModal(false); // Close the modal immediately
-    if (!selectedClientId || isRejecting) return; // Ensure a client is selected and prevent double-click
+    setShowRejectModal(false);
+    if (!selectedClientId || isRejecting) return;
 
-    setIsRejecting(true); // Start loading
+    setIsRejecting(true);
 
     try {
-      const collectionName = activeTab === 1 ? "privateOfficeVisits" : "visitMap";
-      await reject(selectedClientId, collectionName, reason); // Pass the reason
+      let collectionName;
+      if (activeTab === 0) {
+        collectionName = "visitMap";
+      } else if (activeTab === 1) {
+        collectionName = "privateOfficeVisits";
+      } else if (activeTab === 2) { // New tab for virtualOfficeInquiry
+        collectionName = "virtualOfficeInquiry";
+      }
 
-      if (activeTab === 1) {
-        await fetchOfficeVisitData();
-      } else {
+      await reject(selectedClientId, collectionName, reason);
+
+      // Re-fetch data for the currently active tab
+      if (activeTab === 0) {
         await fetchVisitData();
+      } else if (activeTab === 1) {
+        await fetchOfficeVisitData();
+      } else if (activeTab === 2) {
+        await fetchVirtualOfficeInquiryData();
       }
       setSelectedClientId(null);
-      alert("Visit request rejected and client notified!");
+      alert("Request rejected and client notified!");
     } catch (error) {
       console.error("Error in rejectVisit:", error);
-      alert(error.message || "Failed to reject visit request.");
+      alert(error.message || "Failed to reject request.");
     } finally {
-      setIsRejecting(false); // End loading
+      setIsRejecting(false);
     }
   };
 
@@ -269,10 +300,17 @@ export default function ClientsPage() {
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
-    setSelectedClientId(null);
+    setSelectedClientId(null); // Clear selected client when changing tabs
   };
 
-  const currentClients = activeTab === 0 ? visitClients : officeVisitClients;
+  // Determine which client list to display based on activeTab
+  const currentClients =
+    activeTab === 0
+      ? visitClients
+      : activeTab === 1
+      ? officeVisitClients
+      : virtualOfficeInquiryClients; // Added virtualOfficeInquiryClients for the third tab
+
   const selectedClient = currentClients.find((c) => c.id === selectedClientId) || null;
   const allReservedSeats = selectedClient?.reservedSeats || selectedClient?.selectedSeats || [];
   const allSelectedSeats = clients.flatMap((c) => c.selectedSeats || []);
@@ -287,7 +325,6 @@ export default function ClientsPage() {
     return allSelectedSeats.includes(seatKey);
   };
 
-  // Responsive seat width
   const responsiveSeatBoxSx = {
     minWidth: { xs: 28, sm: 36, md: 40 },
     width: { xs: "8vw", sm: "4vw", md: "40px" },
@@ -303,7 +340,6 @@ export default function ClientsPage() {
     transition: "all .15s"
   };
 
-  // Map card stretches responsively
   const responsiveMapCardSx = {
     flexGrow: 1,
     minWidth: { xs: 250, sm: 320, md: 360 },
@@ -396,7 +432,6 @@ export default function ClientsPage() {
     </Card>
   );
 
-  // ENHANCED: Office details as a bordered table
   const renderOfficeDetails = (office) => {
     if (!office) return null;
     return (
@@ -414,28 +449,24 @@ export default function ClientsPage() {
           >
             <TableBody>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600, width: 180 }}>Area</TableCell>
-                <TableCell>{office.area || "Not specified"}</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Office Number</TableCell>
-                <TableCell>{office.officeNumber || "Not specified"}</TableCell>
+                <TableCell sx={{ fontWeight: 600, width: 180 }}>Office</TableCell>
+                <TableCell>{office.office || "N/A"}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Company</TableCell>
-                <TableCell>{office.company || "Not specified"}</TableCell>
+                <TableCell>{office.company || "N/A"}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
-                <TableCell>{office.email || "Not specified"}</TableCell>
+                <TableCell>{office.email || "N/A"}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Phone</TableCell>
-                <TableCell>{office.phone || "Not specified"}</TableCell>
+                <TableCell>{office.phone || "N/A"}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Visit Details</TableCell>
-                <TableCell>{office.details || "Not specified"}</TableCell>
+                <TableCell>{office.details || "N/A"}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Visit Date</TableCell>
@@ -444,7 +475,7 @@ export default function ClientsPage() {
                     ? office.date.seconds
                       ? new Date(office.date.seconds * 1000).toLocaleString()
                       : office.date.toLocaleString()
-                    : "Not specified"}
+                    : "N/A"}
                 </TableCell>
               </TableRow>
             </TableBody>
@@ -453,6 +484,65 @@ export default function ClientsPage() {
       </Box>
     );
   };
+
+  // NEW: Render details for Virtual Office Inquiry
+  const renderVirtualOfficeInquiryDetails = (inquiry) => {
+    if (!inquiry) return null;
+    return (
+      <Box mb={3}>
+        <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
+          Virtual Office Inquiry Details
+        </Typography>
+        <TableContainer component={Paper} sx={{ maxWidth: 500, borderRadius: 2, boxShadow: 0, mb: 2 }}>
+          <Table
+            sx={{
+              borderCollapse: "collapse",
+              "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+            }}
+            size="small"
+          >
+            <TableBody>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600, width: 180 }}>Company</TableCell>
+                <TableCell>{inquiry.company || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Position</TableCell>
+                <TableCell>{inquiry.position || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Address</TableCell>
+                <TableCell>{inquiry.address || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
+                <TableCell>{inquiry.email || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Phone</TableCell>
+                <TableCell>{inquiry.phone || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Inquiry Date</TableCell>
+                <TableCell>
+                  {inquiry.date
+                    ? inquiry.date.seconds
+                      ? new Date(inquiry.date.seconds * 1000).toLocaleDateString()
+                      : new Date(inquiry.date).toLocaleDateString()
+                    : "N/A"}
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Inquiry Time</TableCell>
+                <TableCell>{inquiry.time || "N/A"}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    );
+  };
+
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'grey.50' }}>
@@ -463,14 +553,16 @@ export default function ClientsPage() {
             Visit Requests
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {activeTab === 0 ? (
-              `${visitClients.length} seat requests`
-            ) : (
-              `${officeVisitClients.length} office requests`
-            )}
+            {/* Dynamically display count based on active tab */}
+            {activeTab === 0
+              ? `${visitClients.length} seat requests`
+              : activeTab === 1
+              ? `${officeVisitClients.length} office requests`
+              : `${virtualOfficeInquiryClients.length} virtual office inquiries`}
           </Typography>
         </Box>
 
+        {/* Tabs for different request types */}
         <Tabs
           value={activeTab}
           onChange={handleTabChange}
@@ -479,6 +571,7 @@ export default function ClientsPage() {
         >
           <Tab icon={<SeatIcon fontSize="small" />} label="Seats" />
           <Tab icon={<OfficeIcon fontSize="small" />} label="Offices" />
+          <Tab icon={<BusinessIcon fontSize="small" />} label="Virtual" /> {/* NEW TAB */}
         </Tabs>
 
         <List disablePadding>
@@ -516,6 +609,14 @@ export default function ClientsPage() {
                 {activeTab === 1 && client.officeNumber && (
                   <Chip
                     label={client.officeNumber}
+                    size="small"
+                    sx={{ ml: 1 }}
+                  />
+                )}
+                {/* NEW CHIP for Virtual Office Inquiries */}
+                {activeTab === 2 && (
+                  <Chip
+                    label="Inquiry" // You can change this label to be more specific if needed
                     size="small"
                     sx={{ ml: 1 }}
                   />
@@ -558,9 +659,9 @@ export default function ClientsPage() {
                     variant="contained"
                     color="success"
                     startIcon={<CheckIcon />}
-                    onClick={() => handleAcceptVisit(selectedClient.id, activeTab === 1)}
+                    onClick={() => handleAcceptVisit(selectedClient.id)} // No longer passing isOffice, determined by activeTab
                     sx={{ textTransform: 'none' }}
-                    disabled={isAccepting || isRejecting} // Disable if either action is ongoing
+                    disabled={isAccepting || isRejecting}
                   >
                     {isAccepting ? 'Accepting...' : 'Accept Request'}
                   </Button>
@@ -570,14 +671,14 @@ export default function ClientsPage() {
                     startIcon={<CloseIcon />}
                     onClick={handleRejectClick}
                     sx={{ textTransform: 'none' }}
-                    disabled={isAccepting || isRejecting} // Disable if either action is ongoing
+                    disabled={isAccepting || isRejecting}
                   >
                     {isRejecting ? 'Rejecting...' : 'Reject'}
                   </Button>
                 </Stack>
               </Box>
 
-              {/* Client details */}
+              {/* General Contact Information */}
               <Grid container spacing={3} mb={3}>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
@@ -598,27 +699,27 @@ export default function ClientsPage() {
                     </Stack>
                   </Stack>
                 </Grid>
+                {/* Request Details (dynamic based on tab) */}
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
-                    Visit Details
-                  </Typography>
-                  <Typography variant="body1" paragraph>
-                    {selectedClient.details}
+                    Request Overview
                   </Typography>
                   <Stack spacing={1}>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <EventIcon fontSize="small" color="action" />
                       <Typography variant="body2">
+                        Date:{" "}
                         {selectedClient.date
                           ? selectedClient.date.seconds
-                            ? new Date(selectedClient.date.seconds * 1000).toLocaleString()
-                            : selectedClient.date.toLocaleString()
-                          : "Not specified"}
+                            ? new Date(selectedClient.date.seconds * 1000).toLocaleDateString()
+                            : new Date(selectedClient.date).toLocaleDateString()
+                          : "N/A"}
+                        {activeTab === 2 && selectedClient.time && `, Time: ${selectedClient.time}`}
                       </Typography>
                     </Stack>
                     {activeTab === 0 && selectedClient.reservedSeats?.length > 0 && (
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <InfoIcon fontSize="small" color="action" />
+                        <SeatIcon fontSize="small" color="action" />
                         <Typography variant="body2">
                           Reserved seats: {selectedClient.reservedSeats.join(", ")}
                         </Typography>
@@ -626,18 +727,44 @@ export default function ClientsPage() {
                     )}
                     {activeTab === 1 && selectedClient.officeNumber && (
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <InfoIcon fontSize="small" color="action" />
+                        <OfficeIcon fontSize="small" color="action" />
                         <Typography variant="body2">
                           Requested office: {selectedClient.officeNumber}
                         </Typography>
                       </Stack>
                     )}
+                     {activeTab === 2 && selectedClient.address && ( // Display address for virtual inquiry
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <HomeIcon fontSize="small" color="action" />
+                        <Typography variant="body2">
+                          Address: {selectedClient.address}
+                        </Typography>
+                      </Stack>
+                    )}
+                     {activeTab === 2 && selectedClient.position && ( // Display position for virtual inquiry
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <InfoIcon fontSize="small" color="action" />
+                        <Typography variant="body2">
+                          Position: {selectedClient.position}
+                        </Typography>
+                      </Stack>
+                    )}
+                    {/* Only show 'details' field if it exists for the current tab's collection */}
+                    {(activeTab === 0 || activeTab === 1) && selectedClient.details && (
+                        <Stack direction="row" spacing={1} alignItems="flex-start">
+                            <InfoIcon fontSize="small" color="action" sx={{ mt: 0.5 }} />
+                            <Typography variant="body2">
+                                Details: {selectedClient.details}
+                            </Typography>
+                        </Stack>
+                    )}
                   </Stack>
                 </Grid>
               </Grid>
 
-              {/* Office details for office requests */}
+              {/* Specific details based on the active tab */}
               {activeTab === 1 && renderOfficeDetails(selectedClient)}
+              {activeTab === 2 && renderVirtualOfficeInquiryDetails(selectedClient)} {/* Render new virtual inquiry details */}
 
               {/* Seat maps (only for seat requests) */}
               {activeTab === 0 && (
@@ -700,7 +827,7 @@ export default function ClientsPage() {
         open={showRejectModal}
         onClose={handleCloseRejectModal}
         onConfirm={handleConfirmReject}
-        isSubmitting={isRejecting} // Pass isSubmitting to the modal
+        isSubmitting={isRejecting}
       />
     </Box>
   );
