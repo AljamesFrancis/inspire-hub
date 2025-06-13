@@ -7,10 +7,9 @@ import {
   query,
   doc,
   updateDoc,
-  deleteDoc,
   getDoc,
 } from "firebase/firestore";
-import React, { useState, useEffect } from "react";
+
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
 import seatMap2 from "../../(admin)/seatMap2.json";
@@ -21,8 +20,8 @@ import {
   sendAcceptanceEmail,
   sendRejectionEmail,
 } from "../../(admin)/utils/email";
+import RejectReasonModal from "./RejectReason";
 
-// MUI Components
 import {
   Box,
   Button,
@@ -39,6 +38,14 @@ import {
   Stack,
   Typography,
   Tooltip,
+  Tabs,
+  Tab,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
 } from '@mui/material';
 import {
   Check as CheckIcon,
@@ -47,8 +54,62 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   Business as BusinessIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  MeetingRoom as OfficeIcon,
+  Chair as SeatIcon,
+  Home as HomeIcon
 } from '@mui/icons-material';
+import { useState, useEffect } from "react";
+
+// Accept utility function for updating visit status and sending email
+export async function accept(visitId, collectionName) {
+  if (!visitId) throw new Error("Missing visitId");
+  try {
+    const visitRef = doc(db, collectionName, visitId);
+    const visitDoc = await getDoc(visitRef);
+
+    if (!visitDoc.exists()) throw new Error("Visit not found");
+
+    const clientData = { ...visitDoc.data(), id: visitId };
+
+    await updateDoc(visitRef, { status: "accepted" });
+
+    const emailResult = await sendAcceptanceEmail(clientData);
+
+    if (!emailResult.success) {
+      throw emailResult.error;
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("Error in accept:", error);
+    throw error;
+  }
+}
+
+// Reject utility function for updating visit status, adding a reason, and sending email
+export async function reject(visitId, collectionName, reason) {
+  if (!visitId) throw new Error("Missing visitId");
+  try {
+    const visitRef = doc(db, collectionName, visitId);
+    const visitDoc = await getDoc(visitRef);
+
+    if (!visitDoc.exists()) throw new Error("Visit not found");
+
+    const clientData = { ...visitDoc.data(), id: visitId };
+
+    await updateDoc(visitRef, { status: "rejected", rejectionReason: reason });
+
+    const emailResult = await sendRejectionEmail(clientData, reason);
+
+    if (!emailResult.success) {
+      throw emailResult.error;
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("Error in reject:", error);
+    throw error;
+  }
+}
 
 // Utility functions
 function groupIntoPairs(entries) {
@@ -87,9 +148,24 @@ const groupPairs4 = groupIntoPairs(rowEntries4);
 const groupPairs5 = groupIntoPairs(rowEntries5);
 
 export default function ClientsPage() {
-  const [clients, setClients] = useState([]);
-  const [visitClients, setVisitClients] = useState([]);
+  const [clients, setClients] = useState([]); // This seems to be for occupied seats data
+  const [visitClients, setVisitClients] = useState([]); // For seat visit requests (visitMap)
+  const [officeVisitClients, setOfficeVisitClients] = useState([]); // For private office visit requests (privateOfficeVisits)
+  const [virtualOfficeInquiryClients, setVirtualOfficeInquiryClients] = useState([]);
+
   const [selectedClientId, setSelectedClientId] = useState(null);
+  const [activeTab, setActiveTab] = useState(0);
+
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+
+  // --- Pagination states ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10; // Adjust as needed
+  // -------------------------
 
   useEffect(() => {
     async function fetchOccupiedSeats() {
@@ -113,60 +189,151 @@ export default function ClientsPage() {
     setVisitClients(docs);
   };
 
+  const fetchOfficeVisitData = async () => {
+    const q = query(collection(db, "privateOfficeVisits"), where("status", "==", "pending"));
+    const querySnapshot = await getDocs(q);
+    const docs = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setOfficeVisitClients(docs);
+  };
+
+  const fetchVirtualOfficeInquiryData = async () => {
+    const q = query(collection(db, "virtualOfficeInquiry"), where("status", "==", "pending"));
+    const querySnapshot = await getDocs(q);
+    const docs = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setVirtualOfficeInquiryClients(docs);
+  };
+
   useEffect(() => {
     fetchVisitData();
+    fetchOfficeVisitData();
+    fetchVirtualOfficeInquiryData();
   }, []);
 
-  const acceptVisit = async (visitId) => {
-    if (!visitId) return;
-    try {
-      const visitRef = doc(db, "visitMap", visitId);
-      const visitDoc = await getDoc(visitRef);
-      const clientData = visitDoc.data();
+  // --- Pagination handlers ---
+  const handleNextPage = () => {
+    setCurrentPage((prevPage) => Math.min(prevPage + 1, totalPages));
+    setSelectedClientId(null); // Clear selected client on page change
+  };
 
-      await updateDoc(visitRef, { status: "accepted" });
-      const emailResult = await sendAcceptanceEmail(clientData);
-      
-      if (!emailResult.success) {
-        throw emailResult.error;
+  const handlePrevPage = () => {
+    setCurrentPage((prevPage) => Math.max(prevPage - 1, 1));
+    setSelectedClientId(null); // Clear selected client on page change
+  };
+
+  // Reset page to 1 and clear selected client when changing tabs
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedClientId(null);
+  }, [activeTab]);
+  // -------------------------
+
+  const handleAcceptVisit = async (visitId) => {
+    if (!visitId || isAccepting) return;
+    setIsAccepting(true);
+
+    try {
+      let collectionName;
+      if (activeTab === 0) {
+        collectionName = "visitMap";
+      } else if (activeTab === 1) {
+        collectionName = "privateOfficeVisits";
+      } else if (activeTab === 2) {
+        collectionName = "virtualOfficeInquiry";
       }
 
-      await fetchVisitData();
+      await accept(visitId, collectionName);
+
+      if (activeTab === 0) {
+        await fetchVisitData();
+      } else if (activeTab === 1) {
+        await fetchOfficeVisitData();
+      } else if (activeTab === 2) {
+        await fetchVirtualOfficeInquiryData();
+      }
       setSelectedClientId(null);
-      alert("Visit accepted and client notified!");
+      alert("Request accepted and client notified!");
     } catch (error) {
       console.error("Error in acceptVisit:", error);
-      alert(error.message || "Visit was accepted but failed to notify client.");
+      alert(error.message || "Request was accepted but failed to notify client.");
+    } finally {
+      setIsAccepting(false);
     }
   };
 
-  const rejectVisit = async (visitId) => {
-    if (!visitId) return;
-    try {
-      const visitRef = doc(db, "visitMap", visitId);
-      const visitDoc = await getDoc(visitRef);
-      const clientData = visitDoc.data();
+  const handleRejectClick = () => {
+    if (isRejecting) return;
+    setShowRejectModal(true);
+  };
 
-      await updateDoc(visitRef, { status: "rejected" });
-      const emailResult = await sendRejectionEmail(clientData);
-      
-      if (!emailResult.success) {
-        throw emailResult.error;
+  const handleConfirmReject = async (reason) => {
+    setShowRejectModal(false);
+    if (!selectedClientId || isRejecting) return;
+
+    setIsRejecting(true);
+
+    try {
+      let collectionName;
+      if (activeTab === 0) {
+        collectionName = "visitMap";
+      } else if (activeTab === 1) {
+        collectionName = "privateOfficeVisits";
+      } else if (activeTab === 2) {
+        collectionName = "virtualOfficeInquiry";
       }
 
-      await fetchVisitData();
+      await reject(selectedClientId, collectionName, reason);
+
+      if (activeTab === 0) {
+        await fetchVisitData();
+      } else if (activeTab === 1) {
+        await fetchOfficeVisitData();
+      } else if (activeTab === 2) {
+        await fetchVirtualOfficeInquiryData();
+      }
       setSelectedClientId(null);
-      alert("Visit request rejected and client notified!");
+      alert("Request rejected and client notified!");
     } catch (error) {
       console.error("Error in rejectVisit:", error);
-      alert(error.message || "Failed to reject visit request.");
+      alert(error.message || "Failed to reject request.");
+    } finally {
+      setIsRejecting(false);
     }
   };
 
-  const selectedVisitClient = visitClients.find((c) => c.id === selectedClientId);
-  const allReservedSeats = selectedVisitClient?.reservedSeats || [];
+  const handleCloseRejectModal = () => {
+    setShowRejectModal(false);
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+    setSelectedClientId(null); // Clear selected client when changing tabs
+  };
+
+  // --- Pagination Logic: Filter and slice clients based on current page ---
+  const allClientsForCurrentTab =
+    activeTab === 0
+      ? visitClients
+      : activeTab === 1
+      ? officeVisitClients
+      : virtualOfficeInquiryClients;
+
+  const totalPages = Math.ceil(allClientsForCurrentTab.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentClients = allClientsForCurrentTab.slice(startIndex, endIndex);
+  // -----------------------------------------------------------------------
+
+
+  const selectedClient = allClientsForCurrentTab.find((c) => c.id === selectedClientId) || null; // Ensure this looks at allClientsForCurrentTab
+
+  const allReservedSeats = selectedClient?.reservedSeats || selectedClient?.selectedSeats || [];
   const allSelectedSeats = clients.flatMap((c) => c.selectedSeats || []);
-  const selectedClient = selectedVisitClient || null;
 
   const isReservedSeat = (seat, mapType) => {
     const seatKey = `${mapType}-${seat.number}`;
@@ -178,7 +345,6 @@ export default function ClientsPage() {
     return allSelectedSeats.includes(seatKey);
   };
 
-  // Responsive seat width (stretches/shrinks with screen)
   const responsiveSeatBoxSx = {
     minWidth: { xs: 28, sm: 36, md: 40 },
     width: { xs: "8vw", sm: "4vw", md: "40px" },
@@ -194,7 +360,6 @@ export default function ClientsPage() {
     transition: "all .15s"
   };
 
-  // Map card stretches responsively
   const responsiveMapCardSx = {
     flexGrow: 1,
     minWidth: { xs: 250, sm: 320, md: 360 },
@@ -226,17 +391,17 @@ export default function ClientsPage() {
                       const reserved = isReservedSeat(seat, mapType);
                       const selected = isSelectedSeat(seat, mapType);
 
-                      let seatColor = reserved ? 'primary.main' : 
-                                     selected ? 'error.light' : 
-                                     seat.type === "window" ? 'grey.100' : 'grey.50';
-                      
-                      let barColor = reserved ? 'primary.dark' : 
-                                    selected ? 'error.main' : 
-                                    seat.type === "window" ? 'grey.400' : 'grey.300';
+                      let seatColor = reserved ? 'primary.main' :
+                        selected ? 'error.light' :
+                          seat.type === "window" ? 'grey.100' : 'grey.50';
 
-                      const hoverTitle = reserved ? "This seat is scheduled for a visit" : 
-                                       selected ? "This seat is currently occupied" : 
-                                       seat.type === "window" ? "Window seat (vacant)" : "Vacant seat";
+                      let barColor = reserved ? 'primary.dark' :
+                        selected ? 'error.main' :
+                          seat.type === "window" ? 'grey.400' : 'grey.300';
+
+                      const hoverTitle = reserved ? "This seat is scheduled for a visit" :
+                        selected ? "This seat is currently occupied" :
+                          seat.type === "window" ? "Window seat (vacant)" : "Vacant seat";
 
                       return (
                         <Tooltip key={seat.id} title={hoverTitle} arrow>
@@ -249,9 +414,9 @@ export default function ClientsPage() {
                                 bgcolor: seatColor,
                                 color: reserved || selected ? 'common.white' : 'text.primary',
                                 '&:hover': {
-                                  bgcolor: reserved ? 'primary.dark' : 
-                                           selected ? 'error.main' : 
-                                           seat.type === "window" ? 'grey.200' : 'grey.100',
+                                  bgcolor: reserved ? 'primary.dark' :
+                                    selected ? 'error.main' :
+                                      seat.type === "window" ? 'grey.200' : 'grey.100',
                                 },
                                 '&.Mui-disabled': {
                                   bgcolor: seatColor,
@@ -287,54 +452,227 @@ export default function ClientsPage() {
     </Card>
   );
 
+  const renderOfficeDetails = (office) => {
+    if (!office) return null;
+    return (
+      <Box mb={3}>
+        <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
+          Office Information
+        </Typography>
+        <TableContainer component={Paper} sx={{ maxWidth: 500, borderRadius: 2, boxShadow: 0, mb: 2 }}>
+          <Table
+            sx={{
+              borderCollapse: "collapse",
+              "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+            }}
+            size="small"
+          >
+            <TableBody>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600, width: 180 }}>Office</TableCell>
+                <TableCell>{office.office || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Company</TableCell>
+                <TableCell>{office.company || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
+                <TableCell>{office.email || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Phone</TableCell>
+                <TableCell>{office.phone || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Visit Details</TableCell>
+                <TableCell>{office.details || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Visit Date</TableCell>
+                <TableCell>
+                  {office.date
+                    ? office.date.seconds
+                      ? new Date(office.date.seconds * 1000).toLocaleString()
+                      : office.date.toLocaleString()
+                    : "N/A"}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    );
+  };
+
+  const renderVirtualOfficeInquiryDetails = (inquiry) => {
+    if (!inquiry) return null;
+    return (
+      <Box mb={3}>
+        <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
+          Virtual Office Inquiry Details
+        </Typography>
+        <TableContainer component={Paper} sx={{ maxWidth: 500, borderRadius: 2, boxShadow: 0, mb: 2 }}>
+          <Table
+            sx={{
+              borderCollapse: "collapse",
+              "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+            }}
+            size="small"
+          >
+            <TableBody>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600, width: 180 }}>Company</TableCell>
+                <TableCell>{inquiry.company || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Position</TableCell>
+                <TableCell>{inquiry.position || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Address</TableCell>
+                <TableCell>{inquiry.address || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
+                <TableCell>{inquiry.email || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Phone</TableCell>
+                <TableCell>{inquiry.phone || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Inquiry Date</TableCell>
+                <TableCell>
+                  {inquiry.date
+                    ? inquiry.date.seconds
+                      ? new Date(inquiry.date.seconds * 1000).toLocaleDateString()
+                      : new Date(inquiry.date).toLocaleDateString()
+                    : "N/A"}
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Inquiry Time</TableCell>
+                <TableCell>{inquiry.time || "N/A"}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    );
+  };
+
+
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'grey.50' }}>
       {/* Sidebar */}
       <Paper sx={{ width: 280, flexShrink: 0, overflow: 'auto', boxShadow: 2 }}>
         <Box p={2} borderBottom={1} borderColor="divider">
-          <Typography  fontWeight="medium">
+          <Typography fontWeight="medium">
             Visit Requests
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {visitClients.length} pending requests
+            {activeTab === 0
+              ? `${allClientsForCurrentTab.length} seat requests`
+              : activeTab === 1
+              ? `${allClientsForCurrentTab.length} office requests`
+              : `${allClientsForCurrentTab.length} virtual office inquiries`}
+            {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`} {/* Added page info */}
           </Typography>
         </Box>
+
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          variant="fullWidth"
+          sx={{ borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Tab icon={<SeatIcon fontSize="small" />} label="Seats" />
+          <Tab icon={<OfficeIcon fontSize="small" />} label="Offices" />
+          <Tab icon={<BusinessIcon fontSize="small" />} label="Virtual" />
+        </Tabs>
+
         <List disablePadding>
-          {visitClients.map((client) => (
-            <ListItem 
-              key={client.id} 
-              disablePadding
-              sx={{
-                bgcolor: selectedClientId === client.id ? 'primary.light' : 'transparent',
-                '&:hover': {
-                  bgcolor: selectedClientId === client.id ? 'primary.light' : 'action.hover'
-                }
-              }}
-            >
-              <ListItemButton onClick={() => setSelectedClientId(client.id)}>
-                <ListItemText
-                  primary={
-                    <Typography fontWeight="medium" noWrap>
-                      {client.name}
-                    </Typography>
+          {currentClients.length > 0 ? (
+            currentClients.map((client) => (
+              <ListItem
+                key={client.id}
+                disablePadding
+                sx={{
+                  bgcolor: selectedClientId === client.id ? 'primary.light' : 'transparent',
+                  '&:hover': {
+                    bgcolor: selectedClientId === client.id ? 'primary.light' : 'action.hover'
                   }
-                  secondary={
-                    <Typography variant="body2" color="text.secondary" noWrap>
-                      {client.company}
-                    </Typography>
-                  }
-                />
-                {client.reservedSeats?.length > 0 && (
-                  <Chip 
-                    label={`${client.reservedSeats.length} seats`} 
-                    size="small" 
-                    sx={{ ml: 1 }}
+                }}
+              >
+                <ListItemButton onClick={() => setSelectedClientId(client.id)}>
+                  <ListItemText
+                    primary={
+                      <Typography fontWeight="medium" noWrap>
+                        {client.name}
+                      </Typography>
+                    }
+                    secondary={
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        {client.company}
+                      </Typography>
+                    }
                   />
-                )}
-              </ListItemButton>
-            </ListItem>
-          ))}
+                  {client.reservedSeats?.length > 0 && activeTab === 0 && (
+                    <Chip
+                      label={`${client.reservedSeats.length} seats`}
+                      size="small"
+                      sx={{ ml: 1 }}
+                    />
+                  )}
+                  {activeTab === 1 && client.officeNumber && (
+                    <Chip
+                      label={client.officeNumber}
+                      size="small"
+                      sx={{ ml: 1 }}
+                    />
+                  )}
+                  {activeTab === 2 && (
+                    <Chip
+                      label="Inquiry"
+                      size="small"
+                      sx={{ ml: 1 }}
+                    />
+                  )}
+                </ListItemButton>
+              </ListItem>
+            ))
+          ) : (
+            <Box p={2} textAlign="center" color="text.secondary">
+              <Typography variant="body2">No pending requests for this category.</Typography>
+            </Box>
+          )}
         </List>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <Box p={2} borderTop={1} borderColor="divider" display="flex" justifyContent="space-between" alignItems="center">
+            <Button
+              onClick={handlePrevPage}
+              disabled={currentPage === 1}
+              size="small"
+              sx={{ textTransform: 'none' }}
+            >
+              Previous
+            </Button>
+            <Typography variant="body2" color="text.secondary">
+              Page {currentPage} of {totalPages}
+            </Typography>
+            <Button
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+              size="small"
+              sx={{ textTransform: 'none' }}
+            >
+              Next
+            </Button>
+          </Box>
+        )}
       </Paper>
 
       {/* Main Content */}
@@ -342,11 +680,10 @@ export default function ClientsPage() {
         {selectedClient ? (
           <Card sx={{ width: '100%' }}>
             <CardContent>
-              {/* Header with actions */}
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  flexDirection: { xs: 'column', sm: 'row' }, 
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
                   justifyContent: 'space-between',
                   alignItems: { xs: 'flex-start', sm: 'center' },
                   mb: 3,
@@ -369,24 +706,25 @@ export default function ClientsPage() {
                     variant="contained"
                     color="success"
                     startIcon={<CheckIcon />}
-                    onClick={() => acceptVisit(selectedClient.id)}
+                    onClick={() => handleAcceptVisit(selectedClient.id)}
                     sx={{ textTransform: 'none' }}
+                    disabled={isAccepting || isRejecting}
                   >
-                    Accept Visit
+                    {isAccepting ? 'Accepting...' : 'Accept Request'}
                   </Button>
                   <Button
                     variant="outlined"
                     color="error"
                     startIcon={<CloseIcon />}
-                    onClick={() => rejectVisit(selectedClient.id)}
+                    onClick={handleRejectClick}
                     sx={{ textTransform: 'none' }}
+                    disabled={isAccepting || isRejecting}
                   >
-                    Reject
+                    {isRejecting ? 'Rejecting...' : 'Reject'}
                   </Button>
                 </Stack>
               </Box>
 
-              {/* Client details */}
               <Grid container spacing={3} mb={3}>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
@@ -409,27 +747,58 @@ export default function ClientsPage() {
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
-                    Visit Details
-                  </Typography>
-                  <Typography variant="body1" paragraph>
-                    {selectedClient.details}
+                    Request Overview
                   </Typography>
                   <Stack spacing={1}>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <EventIcon fontSize="small" color="action" />
                       <Typography variant="body2">
+                        Date:{" "}
                         {selectedClient.date
                           ? selectedClient.date.seconds
-                            ? new Date(selectedClient.date.seconds * 1000).toLocaleString()
-                            : selectedClient.date.toLocaleString()
-                          : "Not specified"}
+                            ? new Date(selectedClient.date.seconds * 1000).toLocaleDateString()
+                            : new Date(selectedClient.date).toLocaleDateString()
+                          : "N/A"}
+                        {activeTab === 2 && selectedClient.time && `, Time: ${selectedClient.time}`}
                       </Typography>
                     </Stack>
-                    {selectedClient.reservedSeats?.length > 0 && (
+                    {activeTab === 0 && selectedClient.reservedSeats?.length > 0 && (
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <SeatIcon fontSize="small" color="action" />
+                        <Typography variant="body2">
+                          Reserved seats: {selectedClient.reservedSeats.join(", ")}
+                        </Typography>
+                      </Stack>
+                    )}
+                    {activeTab === 1 && selectedClient.officeNumber && (
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <OfficeIcon fontSize="small" color="action" />
+                        <Typography variant="body2">
+                          Requested office: {selectedClient.officeNumber}
+                        </Typography>
+                      </Stack>
+                    )}
+                    {activeTab === 2 && selectedClient.address && (
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <HomeIcon fontSize="small" color="action" />
+                        <Typography variant="body2">
+                          Address: {selectedClient.address}
+                        </Typography>
+                      </Stack>
+                    )}
+                    {activeTab === 2 && selectedClient.position && (
                       <Stack direction="row" spacing={1} alignItems="center">
                         <InfoIcon fontSize="small" color="action" />
                         <Typography variant="body2">
-                          Reserved seats: {selectedClient.reservedSeats.join(", ")}
+                          Position: {selectedClient.position}
+                        </Typography>
+                      </Stack>
+                    )}
+                    {(activeTab === 0 || activeTab === 1) && selectedClient.details && (
+                      <Stack direction="row" spacing={1} alignItems="flex-start">
+                        <InfoIcon fontSize="small" color="action" sx={{ mt: 0.5 }} />
+                        <Typography variant="body2">
+                          Details: {selectedClient.details}
                         </Typography>
                       </Stack>
                     )}
@@ -437,49 +806,53 @@ export default function ClientsPage() {
                 </Grid>
               </Grid>
 
-              {/* Seat maps */}
-              <Box>
-                <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
-                  Seat Assignment
-                </Typography>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Stack direction="row" spacing={2} mb={2} flexWrap="wrap">
-                    <Chip 
-                      icon={<Box sx={{ width: 14, height: 14, bgcolor: 'primary.main' }} />}
-                      label="Scheduled for visit"
-                      size="small"
-                    />
-                    <Chip 
-                      icon={<Box sx={{ width: 14, height: 14, bgcolor: 'error.light' }} />}
-                      label="Occupied seat"
-                      size="small"
-                    />
-                    <Chip 
-                      icon={<Box sx={{ width: 14, height: 14, bgcolor: 'grey.100', border: 1, borderColor: 'grey.300' }} />}
-                      label="Vacant seat"
-                      size="small"
-                    />
-                  </Stack>
-                  <Box sx={{ overflowX: "auto", py: 1, width: "100%" }}>
-                    <Stack
-                      direction="row"
-                      spacing={2}
-                      sx={{
-                        width: "100%",
-                        flexWrap: { xs: "wrap", md: "nowrap" },
-                        justifyContent: { xs: "center", md: "flex-start" },
-                        alignItems: "stretch"
-                      }}
-                    >
-                      {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
-                      {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
-                      {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
-                      {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
-                      {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
+              {activeTab === 1 && renderOfficeDetails(selectedClient)}
+              {activeTab === 2 && renderVirtualOfficeInquiryDetails(selectedClient)}
+
+              {activeTab === 0 && (
+                <Box>
+                  <Typography variant="subtitle1" fontWeight="medium" gutterBottom>
+                    Seat Assignment
+                  </Typography>
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Stack direction="row" spacing={2} mb={2} flexWrap="wrap">
+                      <Chip
+                        icon={<Box sx={{ width: 14, height: 14, bgcolor: 'primary.main' }} />}
+                        label="Scheduled for visit"
+                        size="small"
+                      />
+                      <Chip
+                        icon={<Box sx={{ width: 14, height: 14, bgcolor: 'error.light' }} />}
+                        label="Occupied seat"
+                        size="small"
+                      />
+                      <Chip
+                        icon={<Box sx={{ width: 14, height: 14, bgcolor: 'grey.100', border: 1, borderColor: 'grey.300' }} />}
+                        label="Vacant seat"
+                        size="small"
+                      />
                     </Stack>
-                  </Box>
-                </Paper>
-              </Box>
+                    <Box sx={{ overflowX: "auto", py: 1, width: "100%" }}>
+                      <Stack
+                        direction="row"
+                        spacing={2}
+                        sx={{
+                          width: "100%",
+                          flexWrap: { xs: "wrap", md: "nowrap" },
+                          justifyContent: { xs: "center", md: "flex-start" },
+                          alignItems: "stretch"
+                        }}
+                      >
+                        {renderSeatMap(groupPairs1, "map1", "Seat Map 1")}
+                        {renderSeatMap(groupPairs2, "map2", "Seat Map 2")}
+                        {renderSeatMap(groupPairs3, "map3", "Seat Map 3")}
+                        {renderSeatMap(groupPairs4, "map4", "Seat Map 4")}
+                        {renderSeatMap(groupPairs5, "map5", "Seat Map 5")}
+                      </Stack>
+                    </Box>
+                  </Paper>
+                </Box>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -490,6 +863,13 @@ export default function ClientsPage() {
           </Paper>
         )}
       </Box>
+
+      <RejectReasonModal
+        open={showRejectModal}
+        onClose={handleCloseRejectModal}
+        onConfirm={handleConfirmReject}
+        isSubmitting={isRejecting}
+      />
     </Box>
   );
 }

@@ -1,90 +1,119 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { FaBars } from 'react-icons/fa';
-import Link from 'next/link'; 
+import React, { useState, useEffect } from "react";
+import { FaBars, FaTimes } from "react-icons/fa";
+import Link from "next/link";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+
+// Firebase imports (ensure these paths are correct for your project)
+import { auth } from "../../../../script/auth";
+import { signOut } from "firebase/auth";
+
+// Toast Notification import (ensure ToastContainer is rendered in your app's root)
+import { toast } from "react-toastify";
 
 const Sidenav = () => {
-  const [isHovered, setIsHovered] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const menuItems = [
-    { name: 'Home', path: '/main' },
-    { name: 'Book', path: '/booking' },
-    { name: 'Reservation', path: '/reservation' },
-    { name: 'Reservation History', path: '/reservationHistory' },
-    { name: 'Billing', path: '/billing' },
-    { name: 'Profile', path: '/profile' },
-    { name: 'Logout', path: '/' },
-  ];
+  const router = useRouter();
 
-  const handleToggle = () => {
-    setIsOpen(!isOpen);
+  // No 'scrolled' state or its useEffect is needed anymore, as the header color is fixed.
+
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
-  useEffect(() => {
-    const handleResize = () => {
-      setIsDesktop(window.innerWidth > 768);
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  const handleLogout = async () => {
+    try {
+      // Engage Firebase signOut
+      await signOut(auth);
+      toast.success("Logged out successfully!");
 
-  const isExpanded = isHovered || isOpen;
+      // Optional: Clear any local storage or cookies related to user session
+      localStorage.removeItem('userToken'); // Example: if you store a user token
+      console.log("User logged out from Firebase and local data cleared.");
+
+      // Redirect to the homepage after logout
+      router.push("/");
+    } catch (error) {
+      console.error("Error during logout:", error);
+      toast.error(`Logout failed: ${error.message || "An unknown error occurred."}`);
+    } finally {
+      setIsMobileMenuOpen(false); // Ensure menu closes on logout
+    }
+  };
 
   return (
-    <div
-      className="fixed top-0 left-0 h-full flex flex-col items-center py-4 z-50"
-      style={{
-        width: isExpanded ? '200px' : '60px',
-        backgroundColor: isExpanded
-          ? 'rgba(31, 41, 55, 1)'
-          : 'rgba(31, 41, 55, 0)',
-        transition: 'width 0.3s ease, background-color 0.3s ease',
-      }}
-      onMouseEnter={() => {
-        if (isDesktop) setIsHovered(true);
-      }}
-      onMouseLeave={() => {
-        if (isDesktop) setIsHovered(false);
-      }}
-    >
-      {/* Hamburger Icon (only when not expanded) */}
-      {!isExpanded && (
-        <>
-          {/* Mobile Hamburger */}
+    <>
+      <header className={`fixed top-0 left-0 right-0 z-50 px-6 py-4 flex items-center justify-between transition-colors duration-300 bg-[#2b2b2b] shadow-md`}>
+        {/* Logo flex left */}
+        <div className="flex items-center space-x-2">
+          <Image
+            src="/images/inspirelogo.png"
+            alt="Website Logo"
+            width={40}
+            height={40}
+          />
+          <span className="text-white font-bold text-lg">Inspire Hub</span>
+        </div>
+
+        {/* Navigation buttons & Mobile Toggle - Flex right */}
+        <div className="flex items-center space-x-6">
+          {/* Desktop "Inquire Virtual Office" Button */}
+          <Link
+            href="/virtual"
+            className="text-white font-semibold hover:text-blue-300 transition px-4 py-2 rounded-lg hidden md:block" // Hidden on mobile, shown on desktop
+          >
+            Inquire Virtual Office
+          </Link>
+
+          {/* Desktop Logout Button */}
           <button
-            onClick={handleToggle}
-            className="md:hidden text-white text-2xl mb-8"
+            onClick={handleLogout}
+            className="text-white font-semibold hover:text-blue-300 transition px-4 py-2 rounded-lg hidden md:block" // Hidden on mobile, shown on desktop
           >
-            <FaBars />
+            Logout
           </button>
-  
-          {/* Desktop Hamburger */}
-          <div className="hidden md:block">
-            <FaBars className="text-white text-2xl mb-8" />
-          </div>
-        </>
-      )}
-  
-      <ul className="flex flex-col gap-6 mt-10">
-        {menuItems.map((item, index) => (
-          <li
-            key={index}
-            className={`text-white text-sm font-medium ${
-              isExpanded ? 'opacity-100' : 'opacity-0'
-            } transition-opacity duration-200`}
+
+          {/* Mobile Toggle Button (only visible on mobile) */}
+          <button
+            className="md:hidden text-white text-xl sm:text-2xl focus:outline-none"
+            onClick={toggleMobileMenu}
+            aria-label="Toggle mobile menu"
           >
-            <Link href={item.path}>
-              {item.name}
+            {isMobileMenuOpen ? <FaTimes /> : <FaBars />}
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile Menu - Always rendered, controlled by CSS classes */}
+      <div className={`md:hidden bg-[#1e293b] fixed w-full top-20 z-40 shadow-lg 
+                       transition-transform duration-300 ease-out 
+                       ${isMobileMenuOpen ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'}`}>
+        <ul className="py-2 px-4 space-y-2">
+          <li>
+            {/* Mobile "Inquire Virtual Office" Link */}
+            <Link
+              href="/virtual"
+              className="w-full block text-left py-2 px-3 rounded hover:bg-blue-700 transition-colors text-white"
+              onClick={() => setIsMobileMenuOpen(false)} // Close menu on click
+            >
+              Inquire Virtual Office
             </Link>
           </li>
-        ))}
-      </ul>
-    </div>
+          <li>
+            {/* Mobile Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="w-full block text-left py-2 px-3 rounded hover:bg-blue-700 transition-colors text-white"
+            >
+              Logout
+            </button>
+          </li>
+        </ul>
+      </div>
+    </>
   );
-  
 };
 
 export default Sidenav;

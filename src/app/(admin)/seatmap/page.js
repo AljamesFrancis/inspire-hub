@@ -1,17 +1,19 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-
+import React from "react";
 import SeatMap from "../components/SeatMap";
+import withUserRole from '../withUserRole';
 
-export default function WelcomePage () {  return (
-   
-         <div>
-            <SeatMap />
-        </div>
-    
-  );
+function WelcomePage({ role }) {
+
+  if (role === "admin") {
+    return (
+      <div>
+        <SeatMap />
+      </div>
+    );
+  }
+
 }
 
-
-
+export default withUserRole(WelcomePage, ["admin"]);

@@ -66,7 +66,8 @@ export default function Signup({ closeModal }) {
               email: formData.email,
               companyName: formData.companyName,
               contact: formData.contact,
-              createdAt: new Date()
+              createdAt: new Date(),
+              role: 'client'
             });
 
             setSuccessMessage('Registration successful!');
@@ -166,7 +167,7 @@ export default function Signup({ closeModal }) {
                   name="companyName"
                   value={formData.companyName}
                   onChange={handleChange}
-                  required
+
                   className="mt-1 block w-full p-2 border rounded"
                 />
               </div>

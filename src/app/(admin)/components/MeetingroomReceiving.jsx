@@ -1,14 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react"; // Import useRef
 import {
   collection,
   getDocs,
-  deleteDoc,
-  doc,
   updateDoc,
+  doc,
 } from "firebase/firestore";
 import { db } from "./../../../../script/firebaseConfig";
+import { sendMeetingAcceptanceEmail, sendRejectionEmail } from "../utils/email";
 
-// MUI Components
 import {
   Box,
   Typography,
@@ -35,37 +34,140 @@ import {
   Tab,
   Chip
 } from "@mui/material";
-import { Save, Close, Event, Schedule } from "@mui/icons-material";
+import { Save, Close, Event, Schedule, InfoOutlined } from "@mui/icons-material";
+
+import RejectReasonModal from "./RejectReason";
+
+// Utility to truncate a Date to minutes (zero out seconds and ms)
+function truncateToMinutes(date) {
+  const d = new Date(date);
+  d.setSeconds(0, 0);
+  return d;
+}
+
+// Normalize Firestore Timestamp or string to "YYYY-MM-DD"
+function normalizeDateField(date) {
+  if (!date) return "";
+  if (typeof date === "object" && "seconds" in date) {
+    const d = new Date(date.seconds * 1000);
+    return d.toISOString().split("T")[0];
+  }
+  if (typeof date === "string") return date;
+  return "";
+}
+
+// Normalize Firestore Timestamp or string to "HH:mm" (24-hour format)
+function normalizeTimeField(time) {
+  if (!time) return "";
+  if (typeof time === "object" && "seconds" in time) {
+    const d = new Date(time.seconds * 1000);
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mm = d.getMinutes().toString().padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+  if (typeof time === "string") return time;
+  return "";
+}
+
+// Helper: create a local Date from date string (YYYY-MM-DD) and time string (HH:MM)
+function getLocalDateTime(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return null;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [hour, min] = timeStr.split(":").map(Number);
+  return new Date(year, month - 1, day, hour, min, 0, 0);
+}
+
+// Helper to check if now between from_time and to_time (all in local time and at minute precision)
+const isCurrentMeeting = (res, nowLocal) => {
+  if (res.status !== "accepted" || !res.date || !res.from_time || !res.to_time) return false;
+  const dateStr = res.date;
+  const fromTimeStr = res.from_time;
+  const toTimeStr = res.to_time;
+
+  const start = getLocalDateTime(dateStr, fromTimeStr);
+  const end = getLocalDateTime(dateStr, toTimeStr);
+
+  if (!start || !end) return false;
+
+  const nowMin = truncateToMinutes(nowLocal);
+  const startMin = truncateToMinutes(start);
+  const endMin = truncateToMinutes(end);
+
+  return nowMin >= startMin && nowMin < endMin;
+};
+
+// Helper to check if a meeting should be marked as done (now >= end time)
+function shouldBeDone(res, nowLocal) {
+  if (res.status !== "accepted" || !res.date || !res.from_time || !res.to_time) return false;
+  const dateStr = res.date;
+  const toTimeStr = res.to_time;
+
+  const end = getLocalDateTime(dateStr, toTimeStr);
+  const nowMin = truncateToMinutes(nowLocal);
+  return nowMin >= end;
+}
 
 const AdminDashboard = () => {
   const [reservations, setReservations] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editedData, setEditedData] = useState({});
-  const [deleteId, setDeleteId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [tabValue, setTabValue] = useState(0);
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rejectReasonModalOpen, setRejectReasonModalOpen] = useState(false);
+  const [reservationToReject, setReservationToReject] = useState(null);
+  const [detailsDialog, setDetailsDialog] = useState({ open: false, data: null });
+
+  // Use a ref to store the "current" local time, updated periodically
+  const nowLocalRef = useRef(truncateToMinutes(new Date()));
 
   const itemsPerPage = 10;
   const theme = useTheme();
 
-  useEffect(() => {
-    const fetchReservations = async () => {
-      const snapshot = await getDocs(collection(db, "meeting room"));
-      const data = snapshot.docs.map((doc) => ({
+  // Function to fetch and update reservations
+  const fetchAndUpdateReservations = async () => {
+    const snapshot = await getDocs(collection(db, "meeting room"));
+    const docs = snapshot.docs.map((doc) => {
+      const d = doc.data();
+      return {
         id: doc.id,
-        ...doc.data(),
-      }));
-      setReservations(data);
-    };
-    fetchReservations();
-  }, []);
+        ...d,
+        date: normalizeDateField(d.date),
+        from_time: normalizeTimeField(d.from_time),
+        to_time: normalizeTimeField(d.to_time),
+      };
+    });
 
-  const handleDelete = async () => {
-    await deleteDoc(doc(db, "meeting room", deleteId));
-    setReservations((reservations) => reservations.filter((res) => res.id !== deleteId));
-    setDeleteId(null);
+    const updates = [];
+    docs.forEach((res) => {
+      // Check against the current time from the ref
+      if (shouldBeDone(res, nowLocalRef.current) && res.status === "accepted") {
+        updates.push(
+          updateDoc(doc(db, "meeting room", res.id), { status: "done" })
+        );
+        res.status = "done";
+      }
+    });
+    if (updates.length > 0) await Promise.all(updates);
+
+    setReservations(docs);
   };
+
+  useEffect(() => {
+    // Initial fetch
+    fetchAndUpdateReservations();
+
+    // Set up a timer to update current time and refetch data periodically
+    // For example, every minute to check for ongoing/done meetings
+    const intervalId = setInterval(() => {
+      nowLocalRef.current = truncateToMinutes(new Date()); // Update the ref
+      // Re-run the fetch and update to re-evaluate meeting statuses
+      fetchAndUpdateReservations();
+    }, 60 * 1000); // Every 1 minute
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
+  }, []); // Empty dependency array means this effect runs once on mount
 
   const handleEdit = (res) => {
     setEditId(res.id);
@@ -91,16 +193,14 @@ const AdminDashboard = () => {
     setCurrentPage(1);
   };
 
+  // Filter reservations using the current time from the ref
   const filteredReservations = reservations.filter((res) => {
-    const now = new Date();
-    const meetingDate = new Date(`${res.date}T${res.time || '00:00'}`);
-    
-    if (tabValue === 0) { // Current meetings
-      return meetingDate <= now;
-    } else if (tabValue === 1) { // Upcoming meetings
-      return meetingDate > now;
-    } else if (tabValue === 2) { // By date
-      return res.date === filterDate;
+    if (tabValue === 0) {
+      return res.status === "accepted" && !isCurrentMeeting(res, nowLocalRef.current) && res.status !== "done";
+    } else if (tabValue === 1) {
+      return res.status === "pending";
+    } else if (tabValue === 2) {
+      return res.status === "accepted" && isCurrentMeeting(res, nowLocalRef.current);
     }
     return true;
   });
@@ -110,53 +210,107 @@ const AdminDashboard = () => {
   const currentItems = filteredReservations.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredReservations.length / itemsPerPage);
 
+  const handleAccept = async (res) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, "meeting room", res.id), { status: "accepted" });
+      await sendMeetingAcceptanceEmail(res);
+      setReservations((prev) =>
+        prev.map((r) => (r.id === res.id ? { ...r, status: "accepted" } : r))
+      );
+      alert("Meeting accepted and client notified!");
+    } catch (error) {
+      console.error("Error accepting meeting:", error);
+      alert(error.message || "Failed to accept meeting or send notification.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenRejectReasonModal = (res) => {
+    setReservationToReject(res);
+    setRejectReasonModalOpen(true);
+  };
+
+  const handleCloseRejectReasonModal = () => {
+    setRejectReasonModalOpen(false);
+    setReservationToReject(null);
+  };
+
+  const handleConfirmReject = async (reason) => {
+    if (!reservationToReject) return;
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, "meeting room", reservationToReject.id), {
+        status: "rejected",
+        rejectionReason: reason
+      });
+      await sendRejectionEmail(reservationToReject, reason);
+      setReservations((prev) =>
+        prev.map((r) =>
+          r.id === reservationToReject.id
+            ? { ...r, status: "rejected", rejectionReason: reason }
+            : r
+        )
+      );
+      alert("Meeting rejected and client notified with reason.");
+    } catch (error) {
+      console.error("Error rejecting meeting:", error);
+      alert(error.message || "Failed to reject meeting or send notification.");
+    } finally {
+      handleCloseRejectReasonModal();
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenDetails = (data) => setDetailsDialog({ open: true, data });
+  const handleCloseDetails = () => setDetailsDialog({ open: false, data: null });
+
   return (
-    <Box p={{ xs: 1, sm: 2, md: 4 }} sx={{ background: "#f3f4f6", minHeight: "100vh" }}>
+    <Box p={{ xs: 1, sm: 2, md: 4 }} sx={{ background: "#f3f4f6", minHeight: "10vh" }}>
       <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 'bold' }}>
         Meeting Room Reservations
       </Typography>
 
       <Paper sx={{ mb: 3, borderRadius: 2 }}>
         <Tabs value={tabValue} onChange={handleTabChange} variant="fullWidth">
-          <Tab 
-            label="Current Meetings" 
-            icon={<Schedule fontSize="small" />} 
-            iconPosition="start" 
+          <Tab
+            label="Accepted Meetings"
+            icon={<Schedule fontSize="small" />}
+            iconPosition="start"
           />
-          <Tab 
-            label="Upcoming Meetings" 
-            icon={<Event fontSize="small" />} 
-            iconPosition="start" 
+          <Tab
+            label="Meeting Requests"
+            icon={<Event fontSize="small" />}
+            iconPosition="start"
           />
-          <Tab 
-            label="Filter by Date" 
-            icon={<Event fontSize="small" />} 
-            iconPosition="start" 
+          <Tab
+            label="Ongoing Meeting"
+            icon={<Event fontSize="small" />}
+            iconPosition="start"
           />
         </Tabs>
-
-        {tabValue === 2 && (
-          <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <TextField
-              label="Select Date"
-              type="date"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ width: 220 }}
-            />
-          </Box>
-        )}
       </Paper>
 
       <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: 3 }}>
-        <Table>
+        <Table
+          sx={{
+            borderCollapse: "collapse",
+            minWidth: 900,
+            "& .MuiTableCell-root": { border: "1px solid #bdbdbd" },
+            "& .MuiTableHead-root .MuiTableCell-root": { backgroundColor: theme.palette.grey[100], fontWeight: 600 }
+          }}
+        >
           <TableHead>
-            <TableRow sx={{ background: theme.palette.grey[100] }}>
+            <TableRow>
               <TableCell align="center">Name</TableCell>
               <TableCell align="center">Email</TableCell>
               <TableCell align="center">Date</TableCell>
-              <TableCell align="center">Time</TableCell>
+              <TableCell align="center">From</TableCell>
+              <TableCell align="center">To</TableCell>
               <TableCell align="center">Duration</TableCell>
               <TableCell align="center">Guests</TableCell>
               <TableCell align="center">Status</TableCell>
@@ -165,10 +319,25 @@ const AdminDashboard = () => {
           </TableHead>
           <TableBody>
             {currentItems.map((res) => {
-              const now = new Date();
-              const meetingDate = new Date(`${res.date}T${res.time || '00:00'}`);
-              const isPast = meetingDate < now;
-              const status = isPast ? "Completed" : "Upcoming";
+              let chipLabel = "-";
+              let chipColor = "default";
+              if (res.status === "accepted" && !isCurrentMeeting(res, nowLocalRef.current)) { // Use nowLocalRef.current
+                chipLabel = "Accepted";
+                chipColor = "success";
+              } else if (res.status === "pending") {
+                chipLabel = "Pending";
+                chipColor = "warning";
+              } else if (res.status === "accepted" && isCurrentMeeting(res, nowLocalRef.current)) { // Use nowLocalRef.current
+                chipLabel = "Ongoing";
+                chipColor = "info";
+              }
+              if (res.status === "done") {
+                chipLabel = "Done";
+                chipColor = "primary";
+              } else if (res.status === "rejected") {
+                chipLabel = "Rejected";
+                chipColor = "error";
+              }
 
               return (
                 <TableRow key={res.id} hover selected={editId === res.id}>
@@ -213,7 +382,7 @@ const AdminDashboard = () => {
                         InputLabelProps={{ shrink: true }}
                       />
                     ) : res.date ? (
-                      new Date(res.date).toLocaleDateString("en-US", {
+                      new Date(res.date + 'T00:00:00').toLocaleDateString("en-US", {
                         year: "numeric",
                         month: "short",
                         day: "numeric",
@@ -226,14 +395,32 @@ const AdminDashboard = () => {
                     {editId === res.id ? (
                       <TextField
                         variant="standard"
-                        value={editedData.time || ""}
+                        type="time"
+                        value={editedData.from_time || ""}
                         onChange={(e) =>
-                          setEditedData({ ...editedData, time: e.target.value })
+                          setEditedData({ ...editedData, from_time: e.target.value })
                         }
                         size="small"
+                        InputLabelProps={{ shrink: true }}
                       />
                     ) : (
-                      res.time
+                      res.from_time || "-"
+                    )}
+                  </TableCell>
+                  <TableCell align="center">
+                    {editId === res.id ? (
+                      <TextField
+                        variant="standard"
+                        type="time"
+                        value={editedData.to_time || ""}
+                        onChange={(e) =>
+                          setEditedData({ ...editedData, to_time: e.target.value })
+                        }
+                        size="small"
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    ) : (
+                      res.to_time || "-"
                     )}
                   </TableCell>
                   <TableCell align="center">
@@ -247,7 +434,7 @@ const AdminDashboard = () => {
                         size="small"
                       />
                     ) : res.duration ? (
-                      parseFloat(res.duration.replace(/[^\d.]/g, ""))
+                      res.duration
                     ) : (
                       "-"
                     )}
@@ -263,13 +450,17 @@ const AdminDashboard = () => {
                         size="small"
                       />
                     ) : (
-                      res.guests
+                      Array.isArray(res.guests)
+                        ? res.guests.length
+                        : (typeof res.guests === "string"
+                          ? res.guests.split(",").filter(Boolean).length
+                          : 0)
                     )}
                   </TableCell>
                   <TableCell align="center">
                     <Chip
-                      label={status}
-                      color={isPast ? "default" : "primary"}
+                      label={chipLabel}
+                      color={chipColor}
                       size="small"
                     />
                   </TableCell>
@@ -297,41 +488,59 @@ const AdminDashboard = () => {
                       </Stack>
                     ) : (
                       <Stack direction="row" spacing={1} justifyContent="center">
-                        {!isPast && (
+                        {tabValue === 1 && res.status === "pending" && (
                           <>
                             <Tooltip title="Accept">
                               <Button
                                 color="success"
-                                onClick={() => handleEdit(res)}
+                                onClick={() => handleAccept(res)}
                                 size="small"
                                 variant="contained"
                                 sx={{ minWidth: 0, px: 2, fontSize: "0.85rem", textTransform: "none" }}
+                                disabled={isSubmitting}
                               >
                                 Accept
                               </Button>
                             </Tooltip>
-                            <Tooltip title="Edit">
+                            <Tooltip title="Reject">
                               <Button
-                                color="warning"
-                                onClick={() => handleEdit(res)}
+                                color="error"
+                                onClick={() => handleOpenRejectReasonModal(res)}
                                 size="small"
                                 variant="contained"
-                                sx={{ minWidth: 0, px: 2, fontSize: "0.85rem", textTransform: "none" }}
+                                sx={{
+                                  minWidth: 0,
+                                  px: 2,
+                                  fontSize: "0.85rem",
+                                  textTransform: "none",
+                                }}
+                                disabled={isSubmitting}
                               >
-                                Edit
+                                Reject
                               </Button>
                             </Tooltip>
                           </>
                         )}
-                        <Tooltip title={isPast ? "Delete" : "Reject"}>
+                        {(tabValue === 0 || tabValue === 1) && (
+                          <Tooltip title="Details">
+                            <IconButton
+                              color="primary"
+                              onClick={() => handleOpenDetails(res)}
+                              size="small"
+                            >
+                              <InfoOutlined />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        <Tooltip title="Edit">
                           <Button
-                            color="error"
-                            onClick={() => setDeleteId(res.id)}
+                            color="warning"
+                            onClick={() => handleEdit(res)}
                             size="small"
                             variant="contained"
                             sx={{ minWidth: 0, px: 2, fontSize: "0.85rem", textTransform: "none" }}
                           >
-                            {isPast ? "Delete" : "Reject"}
+                            Edit
                           </Button>
                         </Tooltip>
                       </Stack>
@@ -342,7 +551,7 @@ const AdminDashboard = () => {
             })}
             {currentItems.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     No reservations found for this category.
                   </Typography>
@@ -353,7 +562,6 @@ const AdminDashboard = () => {
         </Table>
       </TableContainer>
 
-      {/* Pagination Controls */}
       {filteredReservations.length > 0 && (
         <Stack direction="row" justifyContent="center" mt={3}>
           <Pagination
@@ -367,25 +575,60 @@ const AdminDashboard = () => {
         </Stack>
       )}
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
-        <DialogTitle>Confirm Action</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {tabValue === 0 ? 
-              "Are you sure you want to delete this completed meeting record?" :
-              "Are you sure you want to reject this meeting request?"}
-          </DialogContentText>
+      <Dialog open={detailsDialog.open} onClose={handleCloseDetails} maxWidth="sm" fullWidth>
+        <DialogTitle>Reservation Details</DialogTitle>
+        <DialogContent dividers>
+          {detailsDialog.data && (
+            <Stack spacing={2}>
+              <Typography>
+                <strong>Name:</strong> {detailsDialog.data.name || "-"}
+              </Typography>
+              <Typography>
+                <strong>Email:</strong> {detailsDialog.data.email || "-"}
+              </Typography>
+              <Typography>
+                <strong>Date:</strong> {detailsDialog.data.date ? new Date(detailsDialog.data.date + 'T00:00:00').toLocaleDateString("en-US") : "-"}
+              </Typography>
+              <Typography>
+                <strong>From Time:</strong> {detailsDialog.data.from_time || "-"}
+              </Typography>
+              <Typography>
+                <strong>To Time:</strong> {detailsDialog.data.to_time || "-"}
+              </Typography>
+              <Typography>
+                <strong>Duration:</strong> {detailsDialog.data.duration || "-"}
+              </Typography>
+              <Typography>
+                <strong>Cost:</strong> {detailsDialog.data.totalCost || "-"}
+              </Typography>
+              <Typography>
+                <strong>Guests:</strong> {
+                  Array.isArray(detailsDialog.data.guests)
+                    ? detailsDialog.data.guests.join(", ")
+                    : (typeof detailsDialog.data.guests === "string"
+                      ? detailsDialog.data.guests
+                      : "-")
+                }
+              </Typography>
+              <Typography>
+                <strong>Status:</strong> {detailsDialog.data.status || "-"}
+              </Typography>
+            </Stack>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteId(null)} color="inherit" variant="outlined">
-            Cancel
-          </Button>
-          <Button onClick={handleDelete} color="error" variant="contained">
-            Confirm
+          <Button onClick={handleCloseDetails} color="primary" variant="outlined">
+            Close
           </Button>
         </DialogActions>
       </Dialog>
+
+      <RejectReasonModal
+        open={rejectReasonModalOpen}
+        onClose={handleCloseRejectReasonModal}
+        onConfirm={handleConfirmReject}
+        isSubmitting={isSubmitting}
+      />
     </Box>
   );
 };

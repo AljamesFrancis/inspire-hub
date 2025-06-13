@@ -1,16 +1,20 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Reports from "../components/Reports";
+import withUserRole from '../withUserRole';
 
-export default function WelcomePage () {  return (
-   
-    <div>
-        <Reports /> 
-    </div>
-    
-  );
+function WelcomePage({ role }) {
+
+  if (role === "admin") {
+    return (
+      <div>
+        <Reports />
+      </div>
+    );
+  }
+
+ 
 }
 
-
-
+export default withUserRole(WelcomePage, ["admin"]);

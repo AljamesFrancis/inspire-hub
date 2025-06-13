@@ -59,33 +59,23 @@
   { "id": 82, "number": "I2", "status": "available" },
   { "id": 83, "number": "I3", "status": "available" },
   { "id": 84, "number": "I4", "status": "available" },
-  { "id": 85, "number": "I5", "status": "booked" },
-  { "id": 86, "number": "I6", "status": "available" },
+  { "id": 85, "number": "I5", "status": "available" },
 
   { "id": 89, "number": "J1", "status": "available" },
   { "id": 90, "number": "J2", "status": "available" },
   { "id": 91, "number": "J3", "status": "available" },
   { "id": 92, "number": "J4", "status": "available" },
   { "id": 93, "number": "J5", "status": "available" },
-  { "id": 94, "number": "J6", "status": "available" },
 
   { "id": 97, "number": "K1", "status": "available" },
   { "id": 98, "number": "K2", "status": "available" },
   { "id": 99, "number": "K3", "status": "available" },
   { "id": 100, "number": "K4", "status": "available" },
+  { "id": 101, "number": "K5", "status": "available" },
 
   { "id": 105, "number": "L1", "status": "available" },
   { "id": 106, "number": "L2", "status": "available" },
   { "id": 107, "number": "L3", "status": "available" },
   { "id": 108, "number": "L4", "status": "available" },
-
-  { "id": 113, "number": "M1", "status": "available" },
-  { "id": 114, "number": "M2", "status": "available" },
-  { "id": 115, "number": "M3", "status": "available" },
-  { "id": 116, "number": "M4", "status": "available" },
-
-  { "id": 121, "number": "N1", "status": "available" },
-  { "id": 122, "number": "N2", "status": "available" },
-  { "id": 123, "number": "N3", "status": "available" },
-  { "id": 124, "number": "N4", "status": "available" }
+  { "id": 109, "number": "L5", "status": "available" }
 ]
