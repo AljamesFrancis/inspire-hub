@@ -11,10 +11,10 @@ import { sendReservationEmail  } from "../../(admin)/utils/email";
 
 // Meeting room info (for dynamic display/rates)
 const MEETING_ROOMS = {
-  boracay: { name: 'Boracay', price: 2800 },
-  coron: { name: 'Coron', price: 1450 },
-  elnido: { name: 'El Nido', price: 4300 },
-  siargao: { name: 'Siargao', price: 11000 },
+  boracay: { name: 'Boracay', price: 2800, capacity: 9 },
+  coron: { name: 'Coron', price: 1450, capacity: 5 },
+  elnido: { name: 'El Nido', price: 4300, capacity: 12 },
+  siargao: { name: 'Siargao', price: 11000, capacity: 20 },
 };
 
 const initialTimeSlots = [
@@ -322,7 +322,7 @@ export default function TimeSlotSchedule() {
           <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
             <div className="flex items-center">
               <FiUser className="mr-1" />
-              <span>Capacity: 9 pax</span>
+              <span>Capacity: {room.capacity}</span>
             </div>
             <div className="flex items-center">
               <FiClock className="mr-1" />
@@ -390,11 +390,24 @@ export default function TimeSlotSchedule() {
                 </label>
                 <DatePicker
                   selected={formData.date ? new Date(formData.date) : null}
-                  onChange={(date) =>
+                  onChange={(date) => {
+                    let formattedDate = "";
+                    if (date) {
+                      // Create a new Date object that represents the selected date
+                      // but is manipulated to appear as the local date in UTC.
+                      const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+                      // Format it as YYYY-MM-DD
+                      const year = localDate.getFullYear();
+                      const month = String(localDate.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+                      const day = String(localDate.getDate()).padStart(2, '0');
+                      formattedDate = `${year}-${month}-${day}`;
+                    }
+
                     handleChange({
-                      target: { name: "date", value: date ? date.toISOString().split("T")[0] : "" },
-                    })
-                  }
+                      target: { name: "date", value: formattedDate },
+                    });
+                  }}
                   filterDate={(date) => {
                     const day = date.getDay();
                     if (day === 0 || day === 6) return false;
@@ -415,7 +428,7 @@ export default function TimeSlotSchedule() {
                   minDate={new Date()}
                   className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholderText="Select a date"
-                  dateFormat="MMMM d, yyyy"
+                  dateFormat="MMMM d, yyyy" // Changed to yyyy for year
                   required
                 />
               </div>

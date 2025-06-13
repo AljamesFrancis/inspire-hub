@@ -48,7 +48,6 @@ const BookSeatsForm = () => {
     email: "",
     company: "",
     position: "",
-    address: "",
   });
 
   const [success, setSuccess] = useState(false);
@@ -89,7 +88,6 @@ const BookSeatsForm = () => {
         email: "",
         company: "",
         position: "",
-        address: "",
       });
       setTimeout(() => setSuccess(false), 3000); // Increased timeout for toast visibility
     } catch (error) {
@@ -209,20 +207,7 @@ const BookSeatsForm = () => {
             />
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="address" className="block text-sm font-medium text-gray-600">
-              Address <span className="text-gray-400">(your business address)</span>
-            </label>
-            <input
-              type="text"
-              id="address"
-              name="address"
-              value={form.address}
-              onChange={handleChange}
-              placeholder="123 Main St, City, Country"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 transition"
-            />
-          </div>
+          
 
           {/* Submit Button */}
           <button
