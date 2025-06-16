@@ -1,6 +1,6 @@
 "use client";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore"; // Import 'query' here
 import React, { useState, useEffect } from "react";
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -90,7 +90,10 @@ export default function OccupiedSeatsMap() {
     }
     if (tabIndex === 1) {
       async function fetchPrivateOffices() {
-        const querySnapshot = await getDocs(collection(db, "privateOffice"));
+        // Corrected: Use 'query' and 'where' correctly
+        const q = query(collection(db, "privateOffice"), where("status", "==", "active"));
+        const querySnapshot = await getDocs(q);
+
         const officeDocs = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
@@ -294,12 +297,12 @@ export default function OccupiedSeatsMap() {
         <>
           <Paper variant="outlined" sx={{ p: { xs: 1, sm: 3 }, mb: 3, borderRadius: 2 }}>
             <Stack direction="row" spacing={2} mb={3} flexWrap="wrap">
-              <Chip 
+              <Chip
                 icon={<Box sx={{ width: 14, height: 14, bgcolor: red[400], border: `1px solid ${red[600]}` }} />}
                 label="Occupied seat"
                 size="small"
               />
-              <Chip 
+              <Chip
                 icon={<Box sx={{ width: 14, height: 14, bgcolor: grey[50], border: `1px solid ${grey[300]}` }} />}
                 label="Vacant seat"
                 size="small"

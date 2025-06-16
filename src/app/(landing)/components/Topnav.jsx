@@ -12,9 +12,9 @@ export default function Topnav() {
   const [scrolled, setScrolled] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false); // Signup modal
   const [isLoginOpen, setIsLoginOpen] = useState(false); // Login modal
-  // User state now also stores the role from Firestore
   const [user, setUser] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false); // Animation state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // New state for mobile menu
 
   const router = useRouter();
 
@@ -25,11 +25,9 @@ export default function Topnav() {
 
     window.addEventListener('scroll', handleScroll);
 
-    // Listen for Firebase Auth state changes
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         try {
-          // Fetch additional user data from Firestore
           const usersRef = collection(db, 'users');
           const q = query(usersRef, where("uid", "==", currentUser.uid));
           const querySnapshot = await getDocs(q);
@@ -39,21 +37,18 @@ export default function Topnav() {
             userProfileData = querySnapshot.docs[0].data();
           }
 
-          // Combine Firebase Auth user data with fetched Firestore profile data
-          // Include the 'role' field
           setUser({
             ...currentUser,
             firstName: userProfileData.firstName || currentUser.displayName?.split(' ')[0] || '',
             lastName: userProfileData.lastName || currentUser.displayName?.split(' ').slice(1).join(' ') || '',
-            role: userProfileData.role || 'user', // Default to 'user' if role isn't explicitly set
+            role: userProfileData.role || 'user',
           });
         } catch (error) {
           console.error("Error fetching user profile from Firestore:", error);
-          // Fallback: If there's an error fetching from Firestore, just use the basic Firebase Auth user data
           setUser(currentUser);
         }
       } else {
-        setUser(null); // No user logged in
+        setUser(null);
       }
     });
 
@@ -65,6 +60,7 @@ export default function Topnav() {
 
   const openSignupModal = () => {
     setIsModalOpen(true);
+    setIsMobileMenuOpen(false); // Close mobile menu when opening modal
   };
 
   const closeSignupModal = () => {
@@ -73,6 +69,7 @@ export default function Topnav() {
 
   const openLoginModal = () => {
     setIsLoginOpen(true);
+    setIsMobileMenuOpen(false); // Close mobile menu when opening modal
   };
 
   const closeLoginModal = () => {
@@ -81,21 +78,24 @@ export default function Topnav() {
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
+    setIsMobileMenuOpen(false); // Close mobile menu on logout
     await new Promise((res) => setTimeout(res, 400));
     await signOut(auth);
     setUser(null);
     setIsLoggingOut(false);
   };
 
-  // --- New Handler for Admin Button ---
   const handleAdminClick = () => {
-    router.push('/dashboard'); 
+    router.push('/dashboard');
+    setIsMobileMenuOpen(false); // Close mobile menu when navigating
   };
-  // ------------------------------------
+
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
 
   return (
     <>
-      {/* Logout Animation Overlay */}
       {isLoggingOut && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-60 transition-opacity animate-fadeout">
           <div className="flex flex-col items-center">
@@ -124,19 +124,45 @@ export default function Topnav() {
           <span className="text-white font-bold text-lg">Inspire Hub</span>
         </div>
 
-        {/* Navigation Links */}
-        <div className="space-x-6 flex items-center">
+        {/* Mobile Menu Button (Hamburger) */}
+        <div className="md:hidden flex items-center">
+          <button onClick={toggleMobileMenu} className="text-white focus:outline-none">
+            <svg
+              className="w-8 h-8"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {isMobileMenuOpen ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 6h16M4 12h16m-7 6h7"
+                ></path>
+              )}
+            </svg>
+          </button>
+        </div>
+
+        {/* Navigation Links (Desktop) */}
+        <div className="hidden md:flex space-x-6 items-center">
           {user ? (
             <>
-              {/* Display firstName and lastName */}
               <span className="text-white font-semibold">
                 Hello{' '}
                 {user.firstName && user.lastName
                   ? `${user.firstName} ${user.lastName}`
                   : user.displayName || user.email}
               </span>
-
-              {/* --- Dynamic Admin Button --- */}
               {user.role === "admin" && (
                 <button
                   onClick={handleAdminClick}
@@ -147,8 +173,6 @@ export default function Topnav() {
                   Admin Panel
                 </button>
               )}
-              {/* ---------------------------- */}
-
               <button
                 onClick={handleLogout}
                 className={`font-bold transition ${
@@ -163,15 +187,12 @@ export default function Topnav() {
             </>
           ) : (
             <>
-              {/* Sign Up Button */}
               <button
                 onClick={openSignupModal}
                 className="text-white font-bold hover:text-blue-300 transition"
               >
                 Sign up
               </button>
-
-              {/* Login Button */}
               <button
                 onClick={openLoginModal}
                 className={`font-bold transition ${
@@ -185,13 +206,63 @@ export default function Topnav() {
             </>
           )}
         </div>
-
-        {/* Render Signup Modal */}
-        {isModalOpen && <Signup closeModal={closeSignupModal} />}
-
-        {/* Render Login Modal */}
-        {isLoginOpen && <Login closeModal={closeLoginModal} />}
       </nav>
+
+      {/* Mobile Menu Overlay */}
+      <div
+        className={`fixed top-0 left-0 w-full h-full bg-[#2b2b2b] z-40 transform transition-transform duration-300 ease-in-out md:hidden ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex flex-col items-center justify-center h-full space-y-8">
+          {user ? (
+            <>
+              <span className="text-white text-2xl font-semibold">
+                Hello{' '}
+                {user.firstName && user.lastName
+                  ? `${user.firstName} ${user.lastName}`
+                  : user.displayName || user.email}
+              </span>
+              {user.role === "admin" && (
+                <button
+                  onClick={handleAdminClick}
+                  className="bg-blue-600 text-white font-bold px-6 py-3 rounded text-xl hover:bg-blue-700 transition"
+                >
+                  Admin Panel
+                </button>
+              )}
+              <button
+                onClick={handleLogout}
+                className="bg-yellow-500 text-gray-900 font-bold px-6 py-3 rounded text-xl hover:bg-orange-600 transition"
+                disabled={isLoggingOut}
+              >
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={openSignupModal}
+                className="text-white font-bold text-2xl hover:text-blue-300 transition"
+              >
+                Sign up
+              </button>
+              <button
+                onClick={openLoginModal}
+                className="bg-yellow-500 text-gray-900 font-bold px-6 py-3 rounded text-xl hover:bg-orange-600 transition"
+              >
+                Login
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Render Signup Modal */}
+      {isModalOpen && <Signup closeModal={closeSignupModal} />}
+
+      {/* Render Login Modal */}
+      {isLoginOpen && <Login closeModal={closeLoginModal} />}
 
       {/* TailwindCSS keyframes for fadeout (add this to your global.css if not present):
       @keyframes fadeout {

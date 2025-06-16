@@ -48,14 +48,14 @@ const Hero = () => {
           {/* Text content and button container */}
           <div className="w-full md:w-1/2 text-white flex flex-col justify-center items-start text-left space-y-6">
             {/* Main heading */}
-            <h1 className="text-4xl md:text-6xl font-bold leading-tight">
-              Welcome Home to <br className="hidden md:block" /> Inspire Hub
-            </h1>
-            {/* Supporting paragraph */}
-            <p className="text-lg md:text-2xl max-w-xl">
-              The community, workspaces, and technology to make a good
-              impression and get down to business.
-            </p>
+            <h1 className="mt-30 md:mt-0 text-4xl md:text-6xl font-bold leading-tight">
+                Welcome Home to <br className="hidden md:block" /> Inspire Hub
+              </h1>
+              {/* Supporting paragraph */}
+              <p className="text-lg md:text-2xl max-w-xl">
+                The community, workspaces, and technology to make a good
+                impression and get down to business.
+              </p>
             {/* "Book a Visit" button using a standard <a> tag for navigation */}
             <a href="/main">
               <button className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 transition duration-300 text-white font-semibold py-3 px-8 rounded-lg shadow-lg transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">

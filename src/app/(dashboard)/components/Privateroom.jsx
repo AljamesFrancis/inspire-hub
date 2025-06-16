@@ -255,30 +255,30 @@ export default function BookingForm() {
                 </label>
                 <div className="relative">
                  <DatePicker
-  selected={selectedDate ? new Date(selectedDate) : null}
-  onChange={(date) =>
-    setSelectedDate(date ? date.toLocaleDateString("en-CA") : "")
-  }
-  filterDate={(date) => {
-    const day = date.getDay();
-    if (day === 0 || day === 6) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let weekdaysAdded = 0;
-    let checkDate = new Date(today);
-    while (weekdaysAdded < 2) {
-      checkDate.setDate(checkDate.getDate() + 1);
-      const checkDay = checkDate.getDay();
-      if (checkDay !== 0 && checkDay !== 6) weekdaysAdded++;
-    }
-    return date >= checkDate;
-  }}
-  minDate={new Date()}
-  className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
-  placeholderText="Select a date"
-  dateFormat="MMMM d, yyyy"
-  required
-/>
+                  selected={selectedDate ? new Date(selectedDate) : null}
+                  onChange={(date) =>
+                    setSelectedDate(date ? date.toLocaleDateString("en-CA") : "")
+                  }
+                  filterDate={(date) => {
+                    const day = date.getDay();
+                    if (day === 0 || day === 6) return false;
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    let weekdaysAdded = 0;
+                    let checkDate = new Date(today);
+                    while (weekdaysAdded < 2) {
+                      checkDate.setDate(checkDate.getDate() + 1);
+                      const checkDay = checkDate.getDay();
+                      if (checkDay !== 0 && checkDay !== 6) weekdaysAdded++;
+                    }
+                    return date >= checkDate;
+                  }}
+                  minDate={new Date()}
+                  className="w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholderText="Select a date"
+                  dateFormat="MMMM d, yyyy"
+                  required
+                />
 
                   <FiCalendar className="absolute right-3 top-3 h-5 w-5 text-gray-400 pointer-events-none" />
                 </div>

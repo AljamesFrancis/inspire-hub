@@ -439,49 +439,6 @@ const SettingsPage = () => {
             </div>
           </form>
         </div>
-
-        {/* Preferences Section */}
-        <div className="p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Preferences</h2>
-          <div className="space-y-4">
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="notifications"
-                name="notifications"
-                checked={profile.notifications}
-                onChange={handleProfileChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <label htmlFor="notifications" className="ml-2 block text-sm text-gray-700">
-                Email Notifications
-              </label>
-            </div>
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="darkMode"
-                name="darkMode"
-                checked={profile.darkMode}
-                onChange={handleProfileChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <label htmlFor="darkMode" className="ml-2 block text-sm text-gray-700">
-                Dark Mode
-              </label>
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="button" // This is a button, not a form submit
-                onClick={handleUpdateProfile} // Call the update profile function
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                disabled={loading}
-              >
-                {loading ? 'Saving...' : 'Save Preferences'}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

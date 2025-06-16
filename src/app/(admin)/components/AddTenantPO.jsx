@@ -114,6 +114,7 @@ export default function AddTenantPO({
     offices: false,
     billingRate: false,
     monthsToAvail: false,
+    staus: "active",
   });
 
   // Tabs state

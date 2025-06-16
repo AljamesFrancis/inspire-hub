@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { db } from "../../../../script/firebaseConfig";
+import { db } from "../../../../script/firebaseConfig"; // Ensure this path is correct
 import { collection, getDocs, where, query } from "firebase/firestore";
 import {
   Box,
@@ -28,7 +28,7 @@ import {
   Tab,
   Pagination,
 } from "@mui/material";
-import { green, red, blue, orange } from "@mui/material/colors";
+import { green, red, blue, orange, grey } from "@mui/material/colors";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 // --- Common status chip props ---
@@ -41,7 +41,7 @@ const statusChipProps = {
     label: "Rejected",
     style: { backgroundColor: red[100], color: red[800], fontWeight: 600 },
   },
-  done: {
+  Done: {
     label: "Done",
     style: { backgroundColor: blue[100], color: blue[800], fontWeight: 600 },
   },
@@ -57,34 +57,72 @@ const statusChipProps = {
     label: "Pending",
     style: { backgroundColor: orange[100], color: orange[800], fontWeight: 600 },
   },
+  deactivated: {
+    label: "Deactivated",
+    style: { backgroundColor: grey[300], color: grey[800], fontWeight: 600 },
+  },
 };
 
-function formatTime24h(time) {
-  if (!time) return "-";
-  let h = "", m = "";
-  if (typeof time === "object" && "seconds" in time) {
-    const d = new Date(time.seconds * 1000);
-    h = d.getHours().toString().padStart(2, "0");
-    m = d.getMinutes().toString().padStart(2, "0");
-  } else if (typeof time === "string" && time.includes(":")) {
-    [h, m] = time.split(":");
-    h = h.padStart(2, "0");
-    m = m.padStart(2, "0");
+/**
+ * Converts a Firebase Timestamp object or a valid date string/number into a JavaScript Date object.
+ * Returns null if the input is falsy or results in an invalid date.
+ * @param {object|string|number} firebaseTimestampOrDate - The date value, potentially a Firebase Timestamp.
+ * @returns {Date|null} A Date object or null.
+ */
+function toDate(firebaseTimestampOrDate) {
+  if (!firebaseTimestampOrDate) {
+    return null;
   }
-  return `${h}:${m}`;
+  // If it's a Firebase Timestamp, convert it
+  if (typeof firebaseTimestampOrDate === "object" && "seconds" in firebaseTimestampOrDate) {
+    return new Date(firebaseTimestampOrDate.seconds * 1000);
+  }
+  // If it's already a Date object
+  if (firebaseTimestampOrDate instanceof Date) {
+    return firebaseTimestampOrDate;
+  }
+  // Try to parse as a string or number
+  const date = new Date(firebaseTimestampOrDate);
+  // Check if the parsed date is valid
+  return isNaN(date.getTime()) ? null : date;
 }
 
-function formatDate(date) {
-  if (!date) return "-";
-  if (typeof date === "object" && "seconds" in date) {
-    const d = new Date(date.seconds * 1000);
-    return d.toLocaleDateString();
+/**
+ * Formats a date value using date-fns's "PPP" format.
+ * Handles Firebase Timestamps and returns "N/A" for invalid dates.
+ * @param {object|string|number} dateValue - The date value to format.
+ * @returns {string} Formatted date string or "N/A".
+ */
+function formatDateForDisplay(dateValue) {
+  const date = toDate(dateValue);
+  return date ? format(date, "PPP") : "N/A";
+}
+
+/**
+ * Formats a time value (Firebase Timestamp or HH:mm string) to HH:mm.
+ * @param {object|string} timeValue - The time value.
+ * @returns {string} Formatted time string or "-".
+ */
+function formatTime24h(timeValue) {
+  if (!timeValue) return "-";
+
+  let date;
+  if (typeof timeValue === "object" && "seconds" in timeValue) {
+    date = new Date(timeValue.seconds * 1000);
+  } else if (typeof timeValue === "string" && timeValue.includes(":")) {
+    const [h, m] = timeValue.split(":");
+    date = new Date(); // Use a dummy date, we only care about time
+    date.setHours(parseInt(h, 10));
+    date.setMinutes(parseInt(m, 10));
+  } else {
+    return "-"; // Unrecognized format
   }
-  try {
-    return new Date(date).toLocaleDateString();
-  } catch {
-    return date;
+
+  if (isNaN(date.getTime())) {
+    return "-"; // Invalid date/time
   }
+
+  return format(date, "HH:mm");
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -92,216 +130,315 @@ const ITEMS_PER_PAGE = 10;
 export default function ReservationMeetingReportTabs() {
   const [tab, setTab] = useState(0);
 
-  // --- State for visit schedule ---
+  // --- State for Dedicated Desk Visit Schedule ---
   const [reservations, setReservations] = useState([]);
   const [isLoadingRes, setIsLoadingRes] = useState(true);
   const [modalOpenRes, setModalOpenRes] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [resPage, setResPage] = useState(1);
 
-  // --- State for meeting room ---
+  // --- State for Meeting Room ---
   const [meetings, setMeetings] = useState([]);
   const [isLoadingMeet, setIsLoadingMeet] = useState(true);
   const [modalOpenMeet, setModalOpenMeet] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [meetPage, setMeetPage] = useState(1);
 
-  // --- State for office visits ---
+  // --- State for Private Office Visits ---
   const [officeVisits, setOfficeVisits] = useState([]);
   const [isLoadingOffice, setIsLoadingOffice] = useState(true);
   const [modalOpenOffice, setModalOpenOffice] = useState(false);
   const [selectedOffice, setSelectedOffice] = useState(null);
   const [officePage, setOfficePage] = useState(1);
 
-  // --- State for virtual office visits ---
+  // --- State for Virtual Office Visits ---
   const [virtualOfficeVisits, setVirtualOfficeVisits] = useState([]);
   const [isLoadingVirtualOffice, setIsLoadingVirtualOffice] = useState(true);
   const [modalOpenVirtualOffice, setModalOpenVirtualOffice] = useState(false);
   const [selectedVirtualOffice, setSelectedVirtualOffice] = useState(null);
   const [virtualOfficePage, setVirtualOfficePage] = useState(1);
 
-  // --- Fetch visitMap reports ---
+  // --- State for Deactivated Tenants & Private Offices ---
+  const [deactivatedTenants, setDeactivatedTenants] = useState([]);
+  const [isLoadingDeactivated, setIsLoadingDeactivated] = useState(true);
+  const [modalOpenDeactivated, setModalOpenDeactivated] = useState(false);
+  const [selectedDeactivatedTenant, setSelectedDeactivatedTenant] = useState(null);
+  const [deactivatedPage, setDeactivatedPage] = useState(1);
+
+  // --- Fetch visitMap reports (Dedicated Desk) ---
   useEffect(() => {
-    let unsub = false;
+    let unsubscribed = false;
     const fetchReservations = async () => {
       setIsLoadingRes(true);
-      const q = query(
-        collection(db, "visitMap"),
-        where("status", "in", ["accepted", "rejected"])
-      );
-      const querySnapshot = await getDocs(q);
-      const docs = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      const allReservations = docs.map((doc) => ({
-        ...doc,
-        id: doc.id,
-        name: doc.name,
-        email: doc.email,
-        phone: doc.phone,
-        company: doc.company,
-        details: doc.details,
-        reservedSeats: doc.reservedSeats,
-        date: doc.date
-          ? doc.date.seconds
-            ? new Date(doc.date.seconds * 1000)
-            : new Date(doc.date)
-          : null,
-        status: doc.status === "accepted" ? "Accepted" : "Rejected",
-      }));
-      allReservations.sort(
-        (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
-      );
-      if (!unsub) {
-        setReservations(allReservations);
-        setIsLoadingRes(false);
+      try {
+        const q = query(
+          collection(db, "visitMap"),
+          where("status", "in", ["accepted", "rejected"])
+        );
+        const querySnapshot = await getDocs(q);
+        const docs = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        const allReservations = docs.map((doc) => ({
+          ...doc,
+          name: doc.name || "N/A",
+          email: doc.email || "N/A",
+          phone: doc.phone || "N/A",
+          company: doc.company || "N/A",
+          details: doc.details || "N/A",
+          reservedSeats: doc.reservedSeats || [],
+          // Use the toDate helper for consistency
+          date: toDate(doc.date),
+          status: doc.status === "accepted" ? "Accepted" : "Rejected",
+        }));
+        allReservations.sort(
+          (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
+        );
+        if (!unsubscribed) {
+          setReservations(allReservations);
+        }
+      } catch (error) {
+        console.error("Error fetching dedicated desk reservations:", error);
+        // Optionally set an error state here
+      } finally {
+        if (!unsubscribed) {
+          setIsLoadingRes(false);
+        }
       }
     };
     fetchReservations();
     return () => {
-      unsub = true;
+      unsubscribed = true;
     };
   }, []);
 
   // --- Fetch privateOfficeVisits reports ---
   useEffect(() => {
-    let unsub = false;
+    let unsubscribed = false;
     const fetchOfficeVisits = async () => {
       setIsLoadingOffice(true);
-      const q = query(
-        collection(db, "privateOfficeVisits"),
-        where("status", "in", ["accepted", "rejected"])
-      );
-      const querySnapshot = await getDocs(q);
-      const docs = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      const allOfficeVisits = docs.map((doc) => ({
-        ...doc,
-        id: doc.id,
-        name: doc.name,
-        email: doc.email,
-        phone: doc.phone,
-        company: doc.company,
-        details: doc.details,
-        officeNumber: doc.officeNumber,
-        officeSelected: doc.officeSelected,
-        capacity: doc.capacity,
-        amenities: doc.amenities,
-        date: doc.date
-          ? doc.date.seconds
-            ? new Date(doc.date.seconds * 1000)
-            : new Date(doc.date)
-          : null,
-        status: doc.status === "accepted" ? "Accepted" : "Rejected",
-      }));
-      allOfficeVisits.sort(
-        (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
-      );
-      if (!unsub) {
-        setOfficeVisits(allOfficeVisits);
-        setIsLoadingOffice(false);
+      try {
+        const q = query(
+          collection(db, "privateOfficeVisits"),
+          where("status", "in", ["accepted", "rejected"])
+        );
+        const querySnapshot = await getDocs(q);
+        const docs = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        const allOfficeVisits = docs.map((doc) => ({
+          ...doc,
+          name: doc.name || "N/A",
+          email: doc.email || "N/A",
+          phone: doc.phone || "N/A",
+          company: doc.company || "N/A",
+          details: doc.details || "N/A",
+          office: doc.office || "N/A",
+          officeSelected: doc.officeSelected || "N/A",
+          capacity: doc.capacity || "N/A",
+          amenities: doc.amenities || [],
+          // Use the toDate helper for consistency
+          date: toDate(doc.date),
+          status: doc.status === "accepted" ? "Accepted" : "Rejected",
+        }));
+        allOfficeVisits.sort(
+          (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
+        );
+        if (!unsubscribed) {
+          setOfficeVisits(allOfficeVisits);
+        }
+      } catch (error) {
+        console.error("Error fetching private office visits:", error);
+      } finally {
+        if (!unsubscribed) {
+          setIsLoadingOffice(false);
+        }
       }
     };
     fetchOfficeVisits();
     return () => {
-      unsub = true;
+      unsubscribed = true;
     };
   }, []);
 
   // --- Fetch meeting room reports, status: "done" or "rejected" ---
   useEffect(() => {
-    let unsub = false;
+    let unsubscribed = false;
     const fetchMeetings = async () => {
       setIsLoadingMeet(true);
-      const q = query(
-        collection(db, "meeting room"),
-        where("status", "in", ["done", "rejected"])
-      );
-      const querySnapshot = await getDocs(q);
-      const docs = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      const allMeetings = docs.map((doc) => ({
-        ...doc,
-        id: doc.id,
-        name: doc.name,
-        email: doc.email,
-        guests: doc.guests,
-        from_time: doc.from_time,
-        to_time: doc.to_time,
-        date: doc.date,
-        status: doc.status,
-        duration: doc.duration,
-        details: doc.details,
-      }));
-      // Sort latest date first
-      allMeetings.sort((a, b) => {
-        let ad =
-          typeof a.date === "object" && "seconds" in a.date
-            ? a.date.seconds
-            : new Date(a.date).getTime() / 1000;
-        let bd =
-          typeof b.date === "object" && "seconds" in b.date
-            ? b.date.seconds
-            : new Date(b.date).getTime() / 1000;
-        return bd - ad;
-      });
-      if (!unsub) {
-        setMeetings(allMeetings);
-        setIsLoadingMeet(false);
+      try {
+        const q = query(
+          collection(db, "meeting room"),
+          where("status", "in", ["done", "rejected"])
+        );
+        const querySnapshot = await getDocs(q);
+        const docs = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        const allMeetings = docs.map((doc) => ({
+          ...doc,
+          name: doc.name || "N/A",
+          email: doc.email || "N/A",
+          guests: doc.guests || [],
+          // Convert from_time and to_time using the helper
+          from_time: toDate(doc.from_time),
+          to_time: toDate(doc.to_time),
+          // Convert date using the helper
+          date: toDate(doc.date),
+          status: doc.status || "N/A",
+          duration: doc.duration || "N/A",
+          details: doc.details || "N/A",
+        }));
+        // Sort latest date first
+        allMeetings.sort((a, b) => {
+          const dateA = a.date ? a.date.getTime() : 0;
+          const dateB = b.date ? b.date.getTime() : 0;
+          return dateB - dateA;
+        });
+        if (!unsubscribed) {
+          setMeetings(allMeetings);
+        }
+      } catch (error) {
+        console.error("Error fetching meeting room reports:", error);
+      } finally {
+        if (!unsubscribed) {
+          setIsLoadingMeet(false);
+        }
       }
     };
     fetchMeetings();
     return () => {
-      unsub = true;
+      unsubscribed = true;
     };
   }, []);
 
-  // --- Fetch virtualOfficeVisits reports ---
+  // --- Fetch virtualOfficeInquiry reports ---
   useEffect(() => {
-    let unsub = false;
+    let unsubscribed = false;
     const fetchVirtualOfficeVisits = async () => {
       setIsLoadingVirtualOffice(true);
-      const q = query(
-        collection(db, "virtualOfficeInquiry"),
-        where("status", "in", ["accepted", "rejected"])
-      );
-      const querySnapshot = await getDocs(q);
-      const docs = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      const allVirtualOfficeVisits = docs.map((doc) => ({
-        ...doc,
-        id: doc.id,
-        name: doc.name,
-        email: doc.email,
-        phone: doc.phone,
-        company: doc.company,
-        details: doc.details,
-        service: doc.service, // Assuming a 'service' field for virtual office
-        date: doc.date
-          ? doc.date.seconds
-            ? new Date(doc.date.seconds * 1000)
-            : new Date(doc.date)
-          : null,
-        status: doc.status === "accepted" ? "Accepted" : "Rejected",
-      }));
-      allVirtualOfficeVisits.sort(
-        (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
-      );
-      if (!unsub) {
-        setVirtualOfficeVisits(allVirtualOfficeVisits);
-        setIsLoadingVirtualOffice(false);
+      try {
+        const q = query(
+          collection(db, "virtualOfficeInquiry"),
+          where("status", "in", ["accepted", "rejected"])
+        );
+        const querySnapshot = await getDocs(q);
+        const docs = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        const allVirtualOfficeVisits = docs.map((doc) => ({
+          ...doc,
+          name: doc.name || "N/A",
+          email: doc.email || "N/A",
+          phone: doc.phone || "N/A",
+          company: doc.company || "N/A",
+          details: doc.details || "N/A",
+          service: doc.service || "N/A", // Assuming a 'service' field for virtual office
+          // Use the toDate helper for consistency
+          date: toDate(doc.date),
+          status: doc.status === "accepted" ? "Accepted" : "Rejected",
+        }));
+        allVirtualOfficeVisits.sort(
+          (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
+        );
+        if (!unsubscribed) {
+          setVirtualOfficeVisits(allVirtualOfficeVisits);
+        }
+      } catch (error) {
+        console.error("Error fetching virtual office inquiries:", error);
+      } finally {
+        if (!unsubscribed) {
+          setIsLoadingVirtualOffice(false);
+        }
       }
     };
     fetchVirtualOfficeVisits();
     return () => {
-      unsub = true;
+      unsubscribed = true;
+    };
+  }, []);
+
+  // --- NEW: Fetch Deactivated Tenants and Deactivated Private Offices ---
+  useEffect(() => {
+    let unsubscribed = false;
+    const fetchDeactivatedData = async () => {
+      setIsLoadingDeactivated(true);
+      try {
+        const allDeactivated = [];
+
+        // 1. Fetch from 'seatMap' collection for deactivated tenants (Dedicated Desk)
+        const tenantsQuery = query(
+          collection(db, "seatMap"),
+          where("status", "==", "deactivated")
+        );
+        const tenantsSnapshot = await getDocs(tenantsQuery);
+        tenantsSnapshot.docs.forEach((doc) => {
+          const data = doc.data();
+          allDeactivated.push({
+            id: doc.id,
+            ...data,
+            name: data.name || "N/A",
+            email: data.email || "N/A",
+            phone: data.phone || "N/A",
+            company: data.company || "N/A",
+            // Convert deactivatedAt using the new toDate helper
+            deactivatedAt: toDate(data.deactivatedAt),
+            status: "deactivated", // Explicitly set status for consistency
+            lastActiveDate: formatDateForDisplay(data.lastActiveDate), // Use helper
+            reasonForDeactivation: data.reasonForDeactivation || "N/A",
+            type: "Dedicated Desk Tenant", // Add a type to distinguish source
+          });
+        });
+
+        // 2. Fetch from 'privateOffice' collection for deactivated private offices
+        const privateOfficeQuery = query(
+          collection(db, "privateOffice"),
+          where("status", "==", "deactivated")
+        );
+        const privateOfficeSnapshot = await getDocs(privateOfficeQuery);
+        privateOfficeSnapshot.docs.forEach((doc) => {
+          const data = doc.data();
+          allDeactivated.push({
+            id: doc.id,
+            ...data,
+            name: data.name || "N/A", // Assuming a name field for the deactivated office record
+            email: data.email || "N/A",
+            phone: data.phone || "N/A",
+            company: data.company || "N/A",
+            // Use a relevant date for sorting/display, like 'deactivatedAt' or 'lastActiveDate' if available, otherwise the creation date if it exists
+            deactivatedAt: toDate(data.deactivatedAt || data.dateCreated), // Prefer deactivatedAt, fall back to dateCreated
+            status: data.status, // Keep original status like 'deactivated'
+            type: "Private Office", // Add a type to distinguish source
+            office: data.office || data.officeName || "N/A", // Adjust field names as per your DB
+            details: data.details || "N/A",
+            reasonForDeactivation: data.reasonForDeactivation || "N/A",
+            // Add other relevant privateOffice fields you want to display
+          });
+        });
+
+        // Sort all combined data by deactivatedAt (or primary relevant date)
+        allDeactivated.sort(
+          (a, b) => (b.deactivatedAt?.getTime?.() || 0) - (a.deactivatedAt?.getTime?.() || 0)
+        );
+
+        if (!unsubscribed) {
+          setDeactivatedTenants(allDeactivated);
+        }
+      } catch (error) {
+        console.error("Error fetching deactivated data:", error);
+      } finally {
+        if (!unsubscribed) {
+          setIsLoadingDeactivated(false);
+        }
+      }
+    };
+    fetchDeactivatedData();
+    return () => {
+      unsubscribed = true;
     };
   }, []);
 
@@ -338,6 +475,15 @@ export default function ReservationMeetingReportTabs() {
     setModalOpenVirtualOffice(false);
     setSelectedVirtualOffice(null);
   };
+  // --- Handlers for Deactivated Tenants Modal ---
+  const handleOpenModalDeactivated = (tenant) => {
+    setSelectedDeactivatedTenant(tenant);
+    setModalOpenDeactivated(true);
+  };
+  const handleCloseModalDeactivated = () => {
+    setModalOpenDeactivated(false);
+    setSelectedDeactivatedTenant(null);
+  };
 
   // --- Pagination logic ---
   const paginatedReservations = reservations.slice(
@@ -356,6 +502,11 @@ export default function ReservationMeetingReportTabs() {
     (virtualOfficePage - 1) * ITEMS_PER_PAGE,
     virtualOfficePage * ITEMS_PER_PAGE
   );
+  // --- Pagination for Deactivated Tenants ---
+  const paginatedDeactivatedTenants = deactivatedTenants.slice(
+    (deactivatedPage - 1) * ITEMS_PER_PAGE,
+    deactivatedPage * ITEMS_PER_PAGE
+  );
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -366,17 +517,19 @@ export default function ReservationMeetingReportTabs() {
           setResPage(1);
           setMeetPage(1);
           setOfficePage(1);
-          setVirtualOfficePage(1); // Reset virtual office page when changing tabs
+          setVirtualOfficePage(1);
+          setDeactivatedPage(1); // Reset deactivated tenants page when changing tabs
         }}
         sx={{ mb: 3 }}
       >
         <Tab label="Dedicated Desk Visit Schedule Report" />
         <Tab label="Private Office Visit Report" />
         <Tab label="Meeting Room Report" />
-        <Tab label="Virtual Office Report" /> {/* New Tab */}
+        <Tab label="Virtual Office Report" />
+        <Tab label="Deactivated Tenants" /> {/* NEW TAB ADDED HERE */}
       </Tabs>
 
-      {/* --- Visit Schedule Report Tab --- */}
+      {/* --- Dedicated Desk Visit Schedule Report Tab --- */}
       {tab === 0 && (
         <Card variant="outlined" sx={{ boxShadow: 2 }}>
           <CardContent>
@@ -393,7 +546,7 @@ export default function ReservationMeetingReportTabs() {
                 color="text.primary"
                 gutterBottom
               >
-                Visit Schedule Report
+                Dedicated Desk Visit Schedule Report
               </Typography>
             </Box>
 
@@ -413,7 +566,7 @@ export default function ReservationMeetingReportTabs() {
                     size="medium"
                     sx={{
                       borderCollapse: "collapse",
-                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" },
                     }}
                   >
                     <TableHead>
@@ -441,7 +594,7 @@ export default function ReservationMeetingReportTabs() {
                         <TableRow>
                           <TableCell colSpan={4} align="center">
                             <Typography color="text.secondary">
-                              No reservations found.
+                              No dedicated desk reservations found.
                             </Typography>
                           </TableCell>
                         </TableRow>
@@ -559,7 +712,7 @@ export default function ReservationMeetingReportTabs() {
                     size="medium"
                     sx={{
                       borderCollapse: "collapse",
-                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" },
                     }}
                   >
                     <TableHead>
@@ -592,7 +745,7 @@ export default function ReservationMeetingReportTabs() {
                         <TableRow>
                           <TableCell colSpan={5} align="center">
                             <Typography color="text.secondary">
-                              No office visits found.
+                              No private office visits found.
                             </Typography>
                           </TableCell>
                         </TableRow>
@@ -614,7 +767,7 @@ export default function ReservationMeetingReportTabs() {
                             </TableCell>
                             <TableCell>
                               <Typography variant="body2" color="text.secondary">
-                                {office.officeNumber || office.officeSelected || "-"}
+                                {office.office || office.officeSelected || "-"}
                               </Typography>
                             </TableCell>
                             <TableCell>
@@ -715,7 +868,7 @@ export default function ReservationMeetingReportTabs() {
                     size="medium"
                     sx={{
                       borderCollapse: "collapse",
-                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" },
                     }}
                   >
                     <TableHead>
@@ -732,17 +885,7 @@ export default function ReservationMeetingReportTabs() {
                         </TableCell>
                         <TableCell>
                           <Typography variant="subtitle2" color="text.secondary">
-                            From
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="subtitle2" color="text.secondary">
-                            To
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="subtitle2" color="text.secondary">
-                            Guests
+                            Time
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -756,9 +899,9 @@ export default function ReservationMeetingReportTabs() {
                     <TableBody>
                       {paginatedMeetings.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} align="center">
+                          <TableCell colSpan={5} align="center">
                             <Typography color="text.secondary">
-                              No meetings found.
+                              No meeting room reports found.
                             </Typography>
                           </TableCell>
                         </TableRow>
@@ -780,39 +923,23 @@ export default function ReservationMeetingReportTabs() {
                             </TableCell>
                             <TableCell>
                               <Typography variant="body2" color="text.secondary">
-                                {formatDate(meeting.date)}
+                                {meeting.date
+                                  ? format(meeting.date, "PPP")
+                                  : "N/A"}
                               </Typography>
                             </TableCell>
                             <TableCell>
                               <Typography variant="body2" color="text.secondary">
-                                {formatTime24h(meeting.from_time)}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {formatTime24h(meeting.to_time)}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {Array.isArray(meeting.guests)
-                                  ? meeting.guests.length
-                                  : typeof meeting.guests === "string"
-                                    ? meeting.guests.split(",").filter(Boolean).length
-                                    : 0}
+                                {meeting.from_time && meeting.to_time
+                                  ? `${format(meeting.from_time, "p")} - ${format(meeting.to_time, "p")}`
+                                  : "N/A"}
                               </Typography>
                             </TableCell>
                             <TableCell>
                               <Chip
-                                label={
-                                  statusChipProps[meeting.status]
-                                    ? statusChipProps[meeting.status].label
-                                    : meeting.status
-                                }
+                                label={statusChipProps[meeting.status].label}
                                 sx={{
-                                  ...(statusChipProps[meeting.status]
-                                    ? statusChipProps[meeting.status].style
-                                    : {}),
+                                  ...statusChipProps[meeting.status].style,
                                   fontSize: "0.875rem",
                                   borderRadius: "999px",
                                   px: 1.5,
@@ -899,7 +1026,7 @@ export default function ReservationMeetingReportTabs() {
                     size="medium"
                     sx={{
                       borderCollapse: "collapse",
-                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" }
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" },
                     }}
                   >
                     <TableHead>
@@ -916,7 +1043,7 @@ export default function ReservationMeetingReportTabs() {
                         </TableCell>
                         <TableCell>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Date &amp; Time
+                            Date
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -932,7 +1059,7 @@ export default function ReservationMeetingReportTabs() {
                         <TableRow>
                           <TableCell colSpan={5} align="center">
                             <Typography color="text.secondary">
-                              No virtual office visits found.
+                              No virtual office inquiries found.
                             </Typography>
                           </TableCell>
                         </TableRow>
@@ -954,13 +1081,13 @@ export default function ReservationMeetingReportTabs() {
                             </TableCell>
                             <TableCell>
                               <Typography variant="body2" color="text.secondary">
-                                {virtualOffice.service || "-"}
+                                {virtualOffice.service || "N/A"}
                               </Typography>
                             </TableCell>
                             <TableCell>
                               <Typography variant="body2" color="text.secondary">
                                 {virtualOffice.date
-                                  ? format(virtualOffice.date, "PPPpp")
+                                  ? format(virtualOffice.date, "PPP")
                                   : "N/A"}
                               </Typography>
                             </TableCell>
@@ -1018,90 +1145,214 @@ export default function ReservationMeetingReportTabs() {
         </Card>
       )}
 
-      {/* --- Modal for client details (Visit Schedule) --- */}
-      <Dialog
-        open={modalOpenRes}
-        onClose={handleCloseModalRes}
-        maxWidth="xs"
-        fullWidth
-        aria-labelledby="client-details-title"
-      >
-        <DialogTitle id="client-details-title" sx={{ fontWeight: "bold", pb: 1 }}>
-          Client Details
+      {/* --- Deactivated Tenants Tab (NEW) --- */}
+      {tab === 4 && (
+        <Card variant="outlined" sx={{ boxShadow: 2 }}>
+          <CardContent>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems={{ xs: "start", sm: "center" }}
+              flexDirection={{ xs: "column", sm: "row" }}
+              mb={3}
+            >
+              <Typography
+                variant="h5"
+                fontWeight="bold"
+                color="text.primary"
+                gutterBottom
+              >
+                Deactivated Tenants & Private Offices
+              </Typography>
+            </Box>
+
+            {isLoadingDeactivated ? (
+              <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                minHeight={256}
+              >
+                <CircularProgress color="primary" size={56} thickness={4} />
+              </Box>
+            ) : (
+              <Box sx={{ overflowX: "auto" }}>
+                <TableContainer component={Paper}>
+                  <Table
+                    size="medium"
+                    sx={{
+                      borderCollapse: "collapse",
+                      "& .MuiTableCell-root": { border: "1px solid #bdbdbd" },
+                    }}
+                  >
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Name
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Type
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Deactivation Date
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Status
+                          </Typography>
+                        </TableCell>
+                        <TableCell />
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {paginatedDeactivatedTenants.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center">
+                            <Typography color="text.secondary">
+                              No deactivated records found.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedDeactivatedTenants.map((item) => (
+                          <TableRow
+                            key={item.id}
+                            hover
+                            sx={{
+                              "&:hover": {
+                                backgroundColor: "action.hover",
+                              },
+                            }}
+                          >
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={500}>
+                                {item.name}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {item.type}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {item.deactivatedAt
+                                  ? format(item.deactivatedAt, "PPP")
+                                  : "N/A"}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={statusChipProps[item.status].label}
+                                sx={{
+                                  ...statusChipProps[item.status].style,
+                                  fontSize: "0.875rem",
+                                  borderRadius: "999px",
+                                  px: 1.5,
+                                }}
+                                size="small"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleOpenModalDeactivated(item)}
+                                startIcon={<InfoOutlinedIcon />}
+                                sx={{
+                                  fontWeight: 600,
+                                  borderRadius: "999px",
+                                  textTransform: "none",
+                                  borderColor: blue[100],
+                                  color: blue[700],
+                                  "&:hover": {
+                                    backgroundColor: blue[50],
+                                  },
+                                }}
+                              >
+                                View Details
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Stack direction="row" justifyContent="center" mt={3}>
+                  <Pagination
+                    count={Math.ceil(deactivatedTenants.length / ITEMS_PER_PAGE)}
+                    page={deactivatedPage}
+                    onChange={(_, val) => setDeactivatedPage(val)}
+                    color="primary"
+                    showFirstButton
+                    showLastButton
+                  />
+                </Stack>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* --- Modals for each report type --- */}
+
+      {/* Dedicated Desk Reservation Details Modal */}
+      <Dialog open={modalOpenRes} onClose={handleCloseModalRes} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <InfoOutlinedIcon color="primary" />
+          Dedicated Desk Reservation Details
         </DialogTitle>
+        <Divider />
         <DialogContent dividers>
-          {!selectedClient ? (
-            <Typography>Loading...</Typography>
-          ) : (
-            <Stack spacing={2}>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Name
-                </Typography>
-                <Typography variant="body1">{selectedClient.name || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Email
-                </Typography>
-                <Typography variant="body1">{selectedClient.email || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Phone
-                </Typography>
-                <Typography variant="body1">{selectedClient.phone || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Company
-                </Typography>
-                <Typography variant="body1">{selectedClient.company || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Visit Date &amp; Time
-                </Typography>
-                <Typography variant="body1">
-                  {selectedClient.date
-                    ? format(selectedClient.date, "PPPpp")
-                    : "N/A"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Reserved Seats
-                </Typography>
-                <Typography variant="body1">
-                  {selectedClient.reservedSeats && selectedClient.reservedSeats.length
-                    ? selectedClient.reservedSeats.join(", ")
-                    : "-"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Status
-                </Typography>
+          {selectedClient && (
+            <Box>
+              <Typography variant="body1" mb={1}>
+                <strong>Client Name:</strong> {selectedClient.name}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Email:</strong> {selectedClient.email}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Phone:</strong> {selectedClient.phone}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Company:</strong> {selectedClient.company}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Date & Time:</strong>{" "}
+                {selectedClient.date ? format(selectedClient.date, "PPPpp") : "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Reserved Seats:</strong>{" "}
+                {selectedClient.reservedSeats &&
+                selectedClient.reservedSeats.length > 0
+                  ? selectedClient.reservedSeats.join(", ")
+                  : "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Status:</strong>{" "}
                 <Chip
-                  label={statusChipProps[selectedClient.status]?.label || selectedClient.status}
+                  label={statusChipProps[selectedClient.status].label}
                   sx={{
-                    ...statusChipProps[selectedClient.status]?.style, // Corrected to use .style
-                    fontWeight: 600,
-                    px: 1.5,
+                    ...statusChipProps[selectedClient.status].style,
+                    fontSize: "0.875rem",
                     borderRadius: "999px",
+                    px: 1.5,
                   }}
                   size="small"
                 />
-              </Box>
-              {selectedClient.details && (
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Details
-                  </Typography>
-                  <Typography variant="body1">{selectedClient.details}</Typography>
-                </Box>
-              )}
-            </Stack>
+              </Typography>
+              <Typography variant="body1">
+                <strong>Additional Details:</strong> {selectedClient.details}
+              </Typography>
+            </Box>
           )}
         </DialogContent>
         <DialogActions>
@@ -1109,104 +1360,61 @@ export default function ReservationMeetingReportTabs() {
         </DialogActions>
       </Dialog>
 
-      {/* --- Modal for office visit details (Private Office Visit) --- */}
-      <Dialog
-        open={modalOpenOffice}
-        onClose={handleCloseModalOffice}
-        maxWidth="xs"
-        fullWidth
-        aria-labelledby="office-details-title"
-      >
-        <DialogTitle id="office-details-title" sx={{ fontWeight: "bold", pb: 1 }}>
+      {/* Private Office Visit Details Modal */}
+      <Dialog open={modalOpenOffice} onClose={handleCloseModalOffice} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <InfoOutlinedIcon color="primary" />
           Private Office Visit Details
         </DialogTitle>
+        <Divider />
         <DialogContent dividers>
-          {!selectedOffice ? (
-            <Typography>Loading...</Typography>
-          ) : (
-            <Stack spacing={2}>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Name
-                </Typography>
-                <Typography variant="body1">{selectedOffice.name || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Email
-                </Typography>
-                <Typography variant="body1">{selectedOffice.email || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Phone
-                </Typography>
-                <Typography variant="body1">{selectedOffice.phone || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Company
-                </Typography>
-                <Typography variant="body1">{selectedOffice.company || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Office Number / Selected
-                </Typography>
-                <Typography variant="body1">
-                  {selectedOffice.officeNumber || selectedOffice.officeSelected || "-"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Capacity
-                </Typography>
-                <Typography variant="body1">{selectedOffice.capacity || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Amenities
-                </Typography>
-                <Typography variant="body1">
-                  {Array.isArray(selectedOffice.amenities)
-                    ? selectedOffice.amenities.join(", ")
-                    : selectedOffice.amenities || "-"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Visit Date &amp; Time
-                </Typography>
-                <Typography variant="body1">
-                  {selectedOffice.date
-                    ? format(selectedOffice.date, "PPPpp")
-                    : "N/A"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Status
-                </Typography>
+          {selectedOffice && (
+            <Box>
+              <Typography variant="body1" mb={1}>
+                <strong>Client Name:</strong> {selectedOffice.name}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Email:</strong> {selectedOffice.email}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Phone:</strong> {selectedOffice.phone}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Company:</strong> {selectedOffice.company}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Office Selected:</strong> {selectedOffice.office || selectedOffice.officeSelected || "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Capacity:</strong> {selectedOffice.capacity || "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Amenities:</strong>{" "}
+                {selectedOffice.amenities && selectedOffice.amenities.length > 0
+                  ? selectedOffice.amenities.join(", ")
+                  : "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Date & Time:</strong>{" "}
+                {selectedOffice.date ? format(selectedOffice.date, "PPPpp") : "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Status:</strong>{" "}
                 <Chip
-                  label={statusChipProps[selectedOffice.status]?.label || selectedOffice.status}
+                  label={statusChipProps[selectedOffice.status].label}
                   sx={{
-                    ...statusChipProps[selectedOffice.status]?.style, // Corrected to use .style
-                    fontWeight: 600,
-                    px: 1.5,
+                    ...statusChipProps[selectedOffice.status].style,
+                    fontSize: "0.875rem",
                     borderRadius: "999px",
+                    px: 1.5,
                   }}
                   size="small"
                 />
-              </Box>
-              {selectedOffice.details && (
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Details
-                  </Typography>
-                  <Typography variant="body1">{selectedOffice.details}</Typography>
-                </Box>
-              )}
-            </Stack>
+              </Typography>
+              <Typography variant="body1">
+                <strong>Additional Details:</strong> {selectedOffice.details}
+              </Typography>
+            </Box>
           )}
         </DialogContent>
         <DialogActions>
@@ -1214,93 +1422,58 @@ export default function ReservationMeetingReportTabs() {
         </DialogActions>
       </Dialog>
 
-      {/* --- Modal for meeting details (Meeting Room) --- */}
-      <Dialog
-        open={modalOpenMeet}
-        onClose={handleCloseModalMeet}
-        maxWidth="xs"
-        fullWidth
-        aria-labelledby="meeting-details-title"
-      >
-        <DialogTitle id="meeting-details-title" sx={{ fontWeight: "bold", pb: 1 }}>
-          Meeting Details
+      {/* Meeting Room Details Modal */}
+      <Dialog open={modalOpenMeet} onClose={handleCloseModalMeet} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <InfoOutlinedIcon color="primary" />
+          Meeting Room Details
         </DialogTitle>
+        <Divider />
         <DialogContent dividers>
-          {!selectedMeeting ? (
-            <Typography>Loading...</Typography>
-          ) : (
-            <Stack spacing={2}>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Name
-                </Typography>
-                <Typography variant="body1">{selectedMeeting.name || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Email
-                </Typography>
-                <Typography variant="body1">{selectedMeeting.email || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Guests
-                </Typography>
-                <Typography variant="body1">
-                  {Array.isArray(selectedMeeting.guests)
-                    ? selectedMeeting.guests.join(", ")
-                    : selectedMeeting.guests || "-"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Date
-                </Typography>
-                <Typography variant="body1">
-                  {formatDate(selectedMeeting.date)}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Time
-                </Typography>
-                <Typography variant="body1">
-                  {formatTime24h(selectedMeeting.from_time)} -{" "}
-                  {formatTime24h(selectedMeeting.to_time)}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Duration
-                </Typography>
-                <Typography variant="body1">
-                  {selectedMeeting.duration || "-"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Status
-                </Typography>
+          {selectedMeeting && (
+            <Box>
+              <Typography variant="body1" mb={1}>
+                <strong>Client Name:</strong> {selectedMeeting.name}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Email:</strong> {selectedMeeting.email}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Guests:</strong>{" "}
+                {selectedMeeting.guests && selectedMeeting.guests.length > 0
+                  ? selectedMeeting.guests.join(", ")
+                  : "None"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Date:</strong>{" "}
+                {selectedMeeting.date ? format(selectedMeeting.date, "PPP") : "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Time:</strong>{" "}
+                {selectedMeeting.from_time && selectedMeeting.to_time
+                  ? `${format(selectedMeeting.from_time, "p")} - ${format(selectedMeeting.to_time, "p")}`
+                  : "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Duration:</strong> {selectedMeeting.duration}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Status:</strong>{" "}
                 <Chip
-                  label={statusChipProps[selectedMeeting.status]?.label || selectedMeeting.status}
+                  label={statusChipProps[selectedMeeting.status].label}
                   sx={{
-                    ...statusChipProps[selectedMeeting.status]?.style, // Corrected to use .style
-                    fontWeight: 600,
-                    px: 1.5,
+                    ...statusChipProps[selectedMeeting.status].style,
+                    fontSize: "0.875rem",
                     borderRadius: "999px",
+                    px: 1.5,
                   }}
                   size="small"
                 />
-              </Box>
-              {selectedMeeting.details && (
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Details
-                  </Typography>
-                  <Typography variant="body1">{selectedMeeting.details}</Typography>
-                </Box>
-              )}
-            </Stack>
+              </Typography>
+              <Typography variant="body1">
+                <strong>Additional Details:</strong> {selectedMeeting.details}
+              </Typography>
+            </Box>
           )}
         </DialogContent>
         <DialogActions>
@@ -1308,90 +1481,126 @@ export default function ReservationMeetingReportTabs() {
         </DialogActions>
       </Dialog>
 
-      {/* --- Modal for virtual office details (Virtual Office) --- */}
-      <Dialog
-        open={modalOpenVirtualOffice}
-        onClose={handleCloseModalVirtualOffice}
-        maxWidth="xs"
-        fullWidth
-        aria-labelledby="virtual-office-details-title"
-      >
-        <DialogTitle id="virtual-office-details-title" sx={{ fontWeight: "bold", pb: 1 }}>
-          Virtual Office Details
+      {/* Virtual Office Inquiry Details Modal */}
+      <Dialog open={modalOpenVirtualOffice} onClose={handleCloseModalVirtualOffice} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <InfoOutlinedIcon color="primary" />
+          Virtual Office Inquiry Details
         </DialogTitle>
+        <Divider />
         <DialogContent dividers>
-          {!selectedVirtualOffice ? (
-            <Typography>Loading...</Typography>
-          ) : (
-            <Stack spacing={2}>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Name
-                </Typography>
-                <Typography variant="body1">{selectedVirtualOffice.name || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Email
-                </Typography>
-                <Typography variant="body1">{selectedVirtualOffice.email || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Phone
-                </Typography>
-                <Typography variant="body1">{selectedVirtualOffice.phone || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Company
-                </Typography>
-                <Typography variant="body1">{selectedVirtualOffice.company || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Service
-                </Typography>
-                <Typography variant="body1">{selectedVirtualOffice.service || "-"}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Visit Date &amp; Time
-                </Typography>
-                <Typography variant="body1">
-                  {selectedVirtualOffice.date
-                    ? format(selectedVirtualOffice.date, "PPPpp")
-                    : "N/A"}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Status
-                </Typography>
+          {selectedVirtualOffice && (
+            <Box>
+              <Typography variant="body1" mb={1}>
+                <strong>Client Name:</strong> {selectedVirtualOffice.name}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Email:</strong> {selectedVirtualOffice.email}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Phone:</strong> {selectedVirtualOffice.phone}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Company:</strong> {selectedVirtualOffice.company}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Service Interested:</strong> {selectedVirtualOffice.service || "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Date:</strong>{" "}
+                {selectedVirtualOffice.date ? format(selectedVirtualOffice.date, "PPP") : "N/A"}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Status:</strong>{" "}
                 <Chip
-                  label={statusChipProps[selectedVirtualOffice.status]?.label || selectedVirtualOffice.status}
+                  label={statusChipProps[selectedVirtualOffice.status].label}
                   sx={{
-                    ...statusChipProps[selectedVirtualOffice.status]?.style, // Corrected to use .style
-                    fontWeight: 600,
-                    px: 1.5,
+                    ...statusChipProps[selectedVirtualOffice.status].style,
+                    fontSize: "0.875rem",
                     borderRadius: "999px",
+                    px: 1.5,
                   }}
                   size="small"
                 />
-              </Box>
-              {selectedVirtualOffice.details && (
-                <Box>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Details
-                  </Typography>
-                  <Typography variant="body1">{selectedVirtualOffice.details}</Typography>
-                </Box>
-              )}
-            </Stack>
+              </Typography>
+              <Typography variant="body1">
+                <strong>Additional Details:</strong> {selectedVirtualOffice.details}
+              </Typography>
+            </Box>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseModalVirtualOffice}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Deactivated Tenant/Office Details Modal (NEW) */}
+      <Dialog open={modalOpenDeactivated} onClose={handleCloseModalDeactivated} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <InfoOutlinedIcon color="primary" />
+          Deactivated Record Details
+        </DialogTitle>
+        <Divider />
+        <DialogContent dividers>
+          {selectedDeactivatedTenant && (
+            <Box>
+              <Typography variant="body1" mb={1}>
+                <strong>Type:</strong> {selectedDeactivatedTenant.type}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Name:</strong> {selectedDeactivatedTenant.name}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Email:</strong> {selectedDeactivatedTenant.email}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Phone:</strong> {selectedDeactivatedTenant.phone}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Company:</strong> {selectedDeactivatedTenant.company}
+              </Typography>
+              {selectedDeactivatedTenant.type === "Private Office" && (
+                 <Typography variant="body1" mb={1}>
+                 <strong>Office:</strong> {selectedDeactivatedTenant.office}
+               </Typography>
+              )}
+              {selectedDeactivatedTenant.deactivatedAt && (
+                <Typography variant="body1" mb={1}>
+                  <strong>Deactivation Date:</strong>{" "}
+                  {format(selectedDeactivatedTenant.deactivatedAt, "PPP")}
+                </Typography>
+              )}
+              {selectedDeactivatedTenant.lastActiveDate && selectedDeactivatedTenant.type === "Dedicated Desk Tenant" && (
+                <Typography variant="body1" mb={1}>
+                  <strong>Last Active Date:</strong> {selectedDeactivatedTenant.lastActiveDate}
+                </Typography>
+              )}
+              <Typography variant="body1" mb={1}>
+                <strong>Reason for Deactivation:</strong> {selectedDeactivatedTenant.reasonForDeactivation}
+              </Typography>
+              <Typography variant="body1" mb={1}>
+                <strong>Status:</strong>{" "}
+                <Chip
+                  label={statusChipProps[selectedDeactivatedTenant.status].label}
+                  sx={{
+                    ...statusChipProps[selectedDeactivatedTenant.status].style,
+                    fontSize: "0.875rem",
+                    borderRadius: "999px",
+                    px: 1.5,
+                  }}
+                  size="small"
+                />
+              </Typography>
+              {selectedDeactivatedTenant.details && (
+                <Typography variant="body1">
+                  <strong>Additional Details:</strong> {selectedDeactivatedTenant.details}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseModalDeactivated}>Close</Button>
         </DialogActions>
       </Dialog>
     </Container>
