@@ -12,6 +12,12 @@ import seatMap5 from "../../(admin)/seatMap5.json";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { sendBookingEmail } from "../../(admin)/utils/email";
 
+// Import ToastContainer and toast
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css'; // Don't forget to import the CSS!
+
+
+
 // --- Utility functions ---
 function groupIntoPairs(entries) {
   const groups = [];
@@ -64,6 +70,8 @@ const seatMaps = [
   { groupPairs: groupPairs5, mapType: "map5", title: "Seat Map 5" },
 ];
 
+
+
 function SeatReservationForm() {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -76,6 +84,8 @@ function SeatReservationForm() {
   });
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [occupiedSeats, setOccupiedSeats] = useState([]);
+  // --- NEW STATE: isSubmitting ---
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- USER PROFILE STATE ---
   useEffect(() => {
@@ -141,10 +151,27 @@ function SeatReservationForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.email || !form.phone || selectedSeats.length === 0) {
-      alert("Please fill in your details and select at least one seat.");
+
+    // Prevent submission if already submitting
+    if (isSubmitting) {
       return;
     }
+
+    if (!form.name || !form.email || !form.phone || selectedSeats.length === 0) {
+      toast.error("Please fill in your details and select at least one seat.", {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        progress: undefined,
+      });
+      return;
+    }
+
+    // --- Set isSubmitting to true at the start of submission ---
+    setIsSubmitting(true);
 
     try {
       // 1. Add reservation to Firestore
@@ -167,7 +194,17 @@ function SeatReservationForm() {
         selectedSeats: selectedSeats,
       });
 
-      alert("Reservation request submitted and email sent to admin!");
+      toast.success("Reservation request submitted and email sent to admin!", {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+        progress: undefined,
+      });
+
+      // Clear form and selected seats only on success
       setForm({
         name: "",
         email: "",
@@ -177,11 +214,24 @@ function SeatReservationForm() {
         date: "",
       });
       setSelectedSeats([]);
+
     } catch (error) {
       console.error("Error submitting reservation or sending email:", error);
-      alert(
-        "There was an error submitting your reservation or sending the email. Please try again."
+      toast.error(
+        "There was an error submitting your reservation or sending the email. Please try again.",
+        {
+          position: "top-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          progress: undefined,
+        }
       );
+    } finally {
+      // --- Always reset isSubmitting to false after try/catch ---
+      setIsSubmitting(false);
     }
   };
 
@@ -254,7 +304,7 @@ function SeatReservationForm() {
       <div className="w-full max-w-3xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-10">
         <button
           type="button"
-          className="mb-4 px-4 py-2 border border-gray-300 rounded hover:bg-gray-100 transition text-gray-700 text-sm"
+          className="mb-4 mt-4 px-4 py-2 border border-gray-300 rounded hover:bg-gray-100 transition text-gray-700 text-sm"
           onClick={() => router.push("/main")}
         >
           Back
@@ -262,7 +312,7 @@ function SeatReservationForm() {
         <h1 className="text-2xl font-bold text-center mb-4">Reserve a Seat Visit</h1>
 
         {/* Form Section */}
-        <div className="w-full mb-8"> {/* Added mb-8 for spacing below the form */}
+        <div className="w-full mb-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -349,12 +399,18 @@ function SeatReservationForm() {
             <div className="flex justify-center">
               <button
                 type="submit"
+                // --- Updated disabled prop ---
                 disabled={
-                  !form.name || !form.email || !form.phone || selectedSeats.length === 0
+                  isSubmitting || // Disable if submission is in progress
+                  !form.name ||
+                  !form.email ||
+                  !form.phone ||
+                  selectedSeats.length === 0
                 }
                 className="w-48 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                Submit Reservation
+                {/* --- Change button text while submitting --- */}
+                {isSubmitting ? "Submitting..." : "Submit Reservation"}
               </button>
             </div>
           </form>
@@ -385,6 +441,7 @@ function SeatReservationForm() {
           </div>
         </div>
       </div>
+      <ToastContainer /> {/* Add this component at the root of your return */}
     </div>
   );
 }

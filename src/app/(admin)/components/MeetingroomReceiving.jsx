@@ -117,6 +117,9 @@ const AdminDashboard = () => {
   const [rejectReasonModalOpen, setRejectReasonModalOpen] = useState(false);
   const [reservationToReject, setReservationToReject] = useState(null);
   const [detailsDialog, setDetailsDialog] = useState({ open: false, data: null });
+  const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
+  const [reservationToCancel, setReservationToCancel] = useState(null);
+
 
   // Use a ref to store the "current" local time, updated periodically
   const nowLocalRef = useRef(truncateToMinutes(new Date()));
@@ -262,6 +265,39 @@ const AdminDashboard = () => {
       alert(error.message || "Failed to reject meeting or send notification.");
     } finally {
       handleCloseRejectReasonModal();
+      setIsSubmitting(false);
+    }
+  };
+
+  // New function to handle cancellation
+  const handleOpenCancelConfirmation = (res) => {
+    setReservationToCancel(res);
+    setCancelConfirmationOpen(true);
+  };
+
+  const handleCloseCancelConfirmation = () => {
+    setCancelConfirmationOpen(false);
+    setReservationToCancel(null);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!reservationToCancel) return;
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, "meeting room", reservationToCancel.id), { status: "pending" });
+      setReservations((prev) =>
+        prev.map((r) =>
+          r.id === reservationToCancel.id ? { ...r, status: "pending" } : r
+        )
+      );
+      alert("Meeting status changed to pending.");
+    } catch (error) {
+      console.error("Error canceling meeting:", error);
+      alert(error.message || "Failed to change meeting status to pending.");
+    } finally {
+      handleCloseCancelConfirmation();
       setIsSubmitting(false);
     }
   };
@@ -521,6 +557,20 @@ const AdminDashboard = () => {
                             </Tooltip>
                           </>
                         )}
+                        {tabValue === 0 && res.status === "accepted" && !isCurrentMeeting(res, nowLocalRef.current) && (
+                          <Tooltip title="Cancel Meeting">
+                            <Button
+                              color="error"
+                              onClick={() => handleOpenCancelConfirmation(res)}
+                              size="small"
+                              variant="contained"
+                              sx={{ minWidth: 0, px: 2, fontSize: "0.85rem", textTransform: "none" }}
+                              disabled={isSubmitting}
+                            >
+                              Cancel
+                            </Button>
+                          </Tooltip>
+                        )}
                         {(tabValue === 0 || tabValue === 1) && (
                           <Tooltip title="Details">
                             <IconButton
@@ -619,6 +669,29 @@ const AdminDashboard = () => {
         <DialogActions>
           <Button onClick={handleCloseDetails} color="primary" variant="outlined">
             Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Cancel Confirmation Dialog */}
+      <Dialog
+        open={cancelConfirmationOpen}
+        onClose={handleCloseCancelConfirmation}
+        aria-labelledby="cancel-dialog-title"
+        aria-describedby="cancel-dialog-description"
+      >
+        <DialogTitle id="cancel-dialog-title">Confirm Cancellation</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="cancel-dialog-description">
+            Are you sure you want to change this meeting's status to "Pending"? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCancelConfirmation} color="primary" disabled={isSubmitting}>
+            No
+          </Button>
+          <Button onClick={handleConfirmCancel} color="error" autoFocus disabled={isSubmitting}>
+            Yes, Change to Pending
           </Button>
         </DialogActions>
       </Dialog>

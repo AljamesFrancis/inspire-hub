@@ -84,6 +84,7 @@ export default function AddVirtualOfficeTenantModal({
       billingAddress: "",
       monthsToAvail: 1,
       total: 0,
+      staus: "active",
     },
   });
   const [isLoading, setIsLoading] = useState(false);

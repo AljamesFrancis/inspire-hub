@@ -14,7 +14,6 @@ const images = [
   "/images/robinsons.png",
   "/images/shang.png",
   "/images/smdc.png",
-  "/images/spire.png",
   "/images/unb.png",
   "/images/vistaland.png",
   // Add more images as needed

@@ -124,6 +124,7 @@ export default function AddTenantModal({
     phone: "",
     address: "",
     selectedSeats: [],
+    status: "active",
     billing: {
       plan: "monthly",
       rate: 0,
@@ -482,7 +483,7 @@ export default function AddTenantModal({
           <Avatar sx={{ bgcolor: blue[500], mr: 2, width: 32, height: 32 }}>
             <PersonIcon fontSize="small" />
           </Avatar>
-          <Typography variant="h6" fontWeight={700}>
+          <Typography fontWeight={700}>
             Add New Tenant
           </Typography>
         </Box>

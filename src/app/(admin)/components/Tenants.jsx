@@ -1,6 +1,6 @@
 "use client";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, getDocs, doc, deleteDoc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteField, serverTimestamp, query, where } from "firebase/firestore";
 import React, { useState, useEffect } from "react";
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -13,7 +13,7 @@ import AddtenantPO from "./AddTenantPO";
 import TenantDetailsModal from "./TenantDetailsModal";
 import ExtensionBillingModal from "./ExtensionBillingModal";
 import AddTenantVirtual from "./AddTenantVirtual";
-import EditTenantModal from "./EditTenantModal"; // <--- NEW: Import your EditTenantModal component
+import EditTenantModal from "./EditTenantModal";
 import {
   Box,
   Button,
@@ -41,11 +41,13 @@ import {
   Tabs,
   Tab,
   Grid,
+  TextField, // Import TextField for password input
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import { blue, green, grey, red, purple } from "@mui/material/colors";
-import { sendSubscriptionExpiryNotification } from "../../(admin)/utils/email"; // Make sure this is the correct import
+import { sendSubscriptionExpiryNotification } from "../../(admin)/utils/email";
+import { getAuth, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth"; // Import Firebase Auth functions
 
 // Utility functions (keeping them as is)
 function groupIntoPairs(entries) {
@@ -92,21 +94,22 @@ export default function SeatMapTable() {
   const [tenantDetailsClient, setTenantDetailsClient] = useState(null);
   const [addModalType, setAddModalType] = useState("dedicated");
   const [tabIndex, setTabIndex] = useState(0);
-  const [page, setPage] = useState([1, 1, 1]);
-  const [isPrivateTabLoaded, setIsPrivateTabLoaded] = useState(false);
-  const [isVirtualTabLoaded, setIsVirtualTabLoaded] = useState(false);
+  const [page, setPage] = useState([1, 1, 1]); // Adjusted for 3 tabs
+  const [isPrivateTabLoaded, setIsPrivateTabLoaded] = useState(false); // Unused, can be removed
+  const [isVirtualTabLoaded, setIsVirtualTabLoaded] = useState(false); // Unused, can be removed
   const [extensionModalOpen, setExtensionModalOpen] = useState(false);
   const [clientToExtend, setClientToExtend] = useState(null);
   const [showVirtualOfficeModal, setShowVirtualOfficeModal] = useState(false);
 
-  // --- NEW: State for editing tenant details ---
   const [editTenantModalOpen, setEditTenantModalOpen] = useState(false);
   const [clientToEdit, setClientToEdit] = useState(null);
 
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     client: null,
-    isPrivate: false,
+    type: null, // Now stores the type of client (dedicated, private, virtual)
+    password: "", // Add state for password input
+    error: "", // Add state for error messages
   });
 
   // --- EMAIL NOTIFICATION HOOKS (keeping them as is) ---
@@ -115,7 +118,7 @@ export default function SeatMapTable() {
     if (!clients || clients.length === 0) return;
 
     clients.forEach(async (client) => {
-      if (!client.billing?.billingEndDate || !client.email) return;
+      if (!client.billing?.billingEndDate || !client.email || client.status === "deactivated") return; // Added status check
 
       const now = new Date();
       const end = new Date(client.billing.billingEndDate);
@@ -145,7 +148,7 @@ export default function SeatMapTable() {
     if (!privateOfficeClients || privateOfficeClients.length === 0) return;
 
     privateOfficeClients.forEach(async (client) => {
-      if (!client.billing?.billingEndDate || !client.email) return;
+      if (!client.billing?.billingEndDate || !client.email || client.status === "deactivated") return; // Added status check
 
       const now = new Date();
       const end = new Date(client.billing.billingEndDate);
@@ -175,7 +178,7 @@ export default function SeatMapTable() {
     if (!virtualOfficeClients || virtualOfficeClients.length === 0) return;
 
     virtualOfficeClients.forEach(async (client) => {
-      if (!client.billing?.billingEndDate || !client.email) return;
+      if (!client.billing?.billingEndDate || !client.email || client.status === "deactivated") return; // Added status check
 
       const now = new Date();
       const end = new Date(client.billing.billingEndDate);
@@ -188,7 +191,7 @@ export default function SeatMapTable() {
             expiry_date: end.toLocaleDateString(undefined, {
               year: "numeric",
               month: "long",
-              mday: "numeric",
+              day: "numeric",
             }),
           });
           const clientRef = doc(db, "virtualOffice", client.id);
@@ -201,55 +204,56 @@ export default function SeatMapTable() {
   }, [virtualOfficeClients]);
   // --- END EMAIL NOTIFICATION HOOKS ---
 
-  // Initial data fetching for dedicated desks
+  // Initial data fetching for all client types (with 'active' status filter)
   useEffect(() => {
     async function fetchData() {
-      const querySnapshot = await getDocs(collection(db, "seatMap"));
-      const docs = querySnapshot.docs.map((doc) => ({
+      // Fetch 'seatMap' clients with status "active"
+      const seatMapQuery = query(
+        collection(db, "seatMap"),
+        where("status", "==", "active") // Added status filter
+      );
+      const seatMapSnapshot = await getDocs(seatMapQuery);
+      const seatMapDocs = seatMapSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      setClients(docs);
+      setClients(seatMapDocs);
+
+      // Fetch 'privateOffice' clients with status "active"
+      const privateOfficeQuery = query(
+        collection(db, "privateOffice"),
+        where("status", "==", "active") // Added status filter
+      );
+      const privateOfficeSnapshot = await getDocs(privateOfficeQuery);
+      const privateOfficeDocs = privateOfficeSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setPrivateOfficeClients(privateOfficeDocs);
+
+      // Fetch 'virtualOffice' clients with status "active"
+      const virtualOfficeQuery = query(
+        collection(db, "virtualOffice"),
+        where("status", "==", "active") // Added status filter
+      );
+      const virtualOfficeSnapshot = await getDocs(virtualOfficeQuery);
+      const virtualOfficeDocs = virtualOfficeSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setVirtualOfficeClients(virtualOfficeDocs);
     }
     fetchData();
-  }, []);
+  }, []); // Run only once on mount
 
-  // Fetch private office data when tab is selected for the first time
-  useEffect(() => {
-    async function fetchPrivateOfficeData() {
-      const querySnapshot = await getDocs(collection(db, "privateOffice"));
-      const docs = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setPrivateOfficeClients(docs);
-      setIsPrivateTabLoaded(true);
-    }
-    if (tabIndex === 1 && !isPrivateTabLoaded) {
-      fetchPrivateOfficeData();
-    }
-  }, [tabIndex, isPrivateTabLoaded]);
-
-  // Fetch virtual office data when tab is selected for the first time
-  useEffect(() => {
-    async function fetchVirtualOfficeData() {
-      const querySnapshot = await getDocs(collection(db, "virtualOffice"));
-      const docs = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setVirtualOfficeClients(docs);
-      setIsVirtualTabLoaded(true);
-    }
-    if (tabIndex === 2 && !isVirtualTabLoaded) {
-      fetchVirtualOfficeData();
-    }
-  }, [tabIndex, isVirtualTabLoaded]);
-
-  // Function to refresh client data across all relevant collections
+  // Function to refresh client data across all relevant collections (now fetches only 'active' clients)
   const refreshClients = async () => {
     // Dedicated Desks
-    const seatMapSnapshot = await getDocs(collection(db, "seatMap"));
+    const seatMapQuery = query(
+      collection(db, "seatMap"),
+      where("status", "==", "active")
+    );
+    const seatMapSnapshot = await getDocs(seatMapQuery);
     const seatMapDocs = seatMapSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
@@ -257,7 +261,11 @@ export default function SeatMapTable() {
     setClients(seatMapDocs);
 
     // Private Office
-    const privateOfficeSnapshot = await getDocs(collection(db, "privateOffice"));
+    const privateOfficeQuery = query(
+      collection(db, "privateOffice"),
+      where("status", "==", "active")
+    );
+    const privateOfficeSnapshot = await getDocs(privateOfficeQuery);
     const privateOfficeDocs = privateOfficeSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
@@ -265,7 +273,11 @@ export default function SeatMapTable() {
     setPrivateOfficeClients(privateOfficeDocs);
 
     // Virtual Office
-    const virtualOfficeSnapshot = await getDocs(collection(db, "virtualOffice"));
+    const virtualOfficeQuery = query(
+      collection(db, "virtualOffice"),
+      where("status", "==", "active")
+    );
+    const virtualOfficeSnapshot = await getDocs(virtualOfficeQuery);
     const virtualOfficeDocs = virtualOfficeSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
@@ -279,7 +291,6 @@ export default function SeatMapTable() {
     setShowTenantDetails(false); // Close details modal when opening extension
   };
 
-  // --- NEW: Edit Handlers ---
   const handleEditTenant = (client) => {
     setClientToEdit(client);
     setEditTenantModalOpen(true);
@@ -293,7 +304,6 @@ export default function SeatMapTable() {
 
   const handleSaveEditedTenant = async (updatedClientData) => {
     let collectionName;
-    // Determine the correct collection based on the client's type or identifying fields
     if (updatedClientData.type === "private" || (updatedClientData.selectedPO && updatedClientData.selectedPO.length > 0)) {
       collectionName = "privateOffice";
     } else if (updatedClientData.type === "virtual" || (updatedClientData.virtualOfficeFeatures && updatedClientData.virtualOfficeFeatures.length > 0)) {
@@ -306,31 +316,117 @@ export default function SeatMapTable() {
       const clientRef = doc(db, collectionName, updatedClientData.id);
       await updateDoc(clientRef, updatedClientData);
       console.log(`Client ${updatedClientData.id} updated successfully in ${collectionName}!`);
-      handleCloseEditModal(); // Close the edit modal
-      await refreshClients(); // Refresh data in the table
+      handleCloseEditModal();
+      await refreshClients();
     } catch (error) {
       console.error("Error updating client:", error);
-      // You might want to add user-facing error feedback here
     }
   };
-  // --- END NEW: Edit Handlers ---
 
+  // --- MODIFIED: handleDeactivateClient to pass the client type ---
+  const handleDeactivateClient = (client, type) => {
+    setConfirmDialog({
+      open: true,
+      client,
+      type, // Pass the detected type (dedicated, private, virtual)
+      password: "", // Clear password field on open
+      error: "", // Clear any previous errors
+    });
+  };
 
-  // Filtering clients based on active status and type
+  // --- NEW: handlePasswordChange for the input field ---
+  const handlePasswordChange = (event) => {
+    setConfirmDialog((prev) => ({ ...prev, password: event.target.value, error: "" }));
+  };
+
+  // --- CORRECTED: confirmDeactivate to use state variables and add password verification ---
+  const confirmDeactivate = async () => {
+    const auth = getAuth();
+    const user = auth.currentUser;
+
+    if (!user) {
+      setConfirmDialog((prev) => ({ ...prev, error: "No authenticated user found. Please log in again." }));
+      return;
+    }
+
+    const { client, type, password } = confirmDialog;
+
+    if (!client || !client.id || !type || !password) {
+      setConfirmDialog((prev) => ({ ...prev, error: "Missing client data, type, or password." }));
+      return;
+    }
+
+    try {
+      // 1. Reauthenticate the user with their password
+      const credential = EmailAuthProvider.credential(user.email, password);
+      await reauthenticateWithCredential(user, credential);
+      console.log("User reauthenticated successfully.");
+
+      // 2. If reauthentication is successful, proceed with deactivation
+      let collectionName;
+      const updateData = {
+        status: 'deactivated', // Set status to deactivated
+        deactivatedAt: serverTimestamp(), // Use serverTimestamp() directly
+      };
+
+      // Determine collection and specific fields to delete based on client type
+      if (type === "dedicated") {
+        collectionName = "seatMap";
+        updateData.selectedSeats = deleteField(); // Delete 'selectedSeats' for dedicated desks
+      } else if (type === "private") {
+        collectionName = "privateOffice";
+        updateData.selectedPO = deleteField(); // Delete 'selectedPO' for private offices
+      } else if (type === "virtual") {
+        collectionName = "virtualOffice";
+        // For virtual office clients, you might not have specific resource fields like seats or offices
+        // to clear out in the same way. Add any relevant fields here if needed.
+      } else {
+        setConfirmDialog((prev) => ({ ...prev, error: "Unknown client type for deactivation. Aborting." }));
+        return;
+      }
+
+      const clientRef = doc(db, collectionName, client.id); // Use client.id
+      await updateDoc(clientRef, updateData);
+      console.log(`Client ${client.id} status set to 'deactivated' and resource fields cleared in ${collectionName}.`);
+      setConfirmDialog({ open: false, client: null, type: null, password: "", error: "" });
+      await refreshClients(); // Refresh the data after the update
+    } catch (error) {
+      console.error("Error during deactivation process:", error);
+      let errorMessage = "Failed to deactivate client.";
+      if (error.code === "auth/wrong-password") {
+        errorMessage = "Incorrect password. Please try again.";
+      } else if (error.code === "auth/invalid-credential") {
+        errorMessage = "Invalid credentials. Please log in again.";
+      } else if (error.code === "auth/user-mismatch") {
+        errorMessage = "Authentication failed. User mismatch.";
+      }
+      setConfirmDialog((prev) => ({ ...prev, error: errorMessage }));
+    }
+  };
+
+  const cancelDeactivate = () => {
+    setConfirmDialog({ open: false, client: null, type: null, password: "", error: "" });
+  };
+
+  // --- MODIFIED: Filtering clients based on 'status' field ---
+  // These filters are now redundant if the fetch/refresh already filters for "active"
+  // However, keeping them here ensures robustness if a client-side mutation changes status before refresh
+  // but if the data is consistently loaded with `status === 'active'`, these `filter` calls
+  // will essentially return the original array.
   const dedicatedDeskClients = clients.filter(
     (client) =>
       (client.type === "dedicated" ||
-        (!client.type &&
+        (!client.type && // Backward compatibility for old records without 'type'
           client.selectedSeats &&
           client.selectedSeats.length > 0 &&
           (!client.officeType || client.officeType === "dedicated desk"))) &&
-      client.active !== false
+      client.status !== 'deactivated' // This filter is now mostly redundant if initial fetch/refresh already filters
   );
   const privateOfficeActiveClients = privateOfficeClients.filter(
-    (client) => client.active !== false
+    (client) => client.status !== 'deactivated' // This filter is now mostly redundant
   );
   const virtualTabClients = virtualOfficeClients.filter(
-    (client) => client.active !== false
+    (client) => client.status !== 'deactivated' // This filter is now mostly redundant
   );
 
   const tabClientSets = [
@@ -403,44 +499,6 @@ export default function SeatMapTable() {
     </Card>
   );
 
-  const handleDeactivateClient = (client, isPrivate) => {
-    setConfirmDialog({
-      open: true,
-      client,
-      isPrivate,
-    });
-  };
-
-  const confirmDeactivate = async () => {
-    const { client, isPrivate } = confirmDialog;
-    let collectionName;
-    if (tabIndex === 0) collectionName = "seatMap"; // Dedicated
-    else if (tabIndex === 1 || isPrivate) collectionName = "privateOffice"; // Private
-    else if (tabIndex === 2) collectionName = "virtualOffice"; // Virtual (using "virtualOffice" as per your useEffect)
-    
-    // Safety check for client.id
-    if (!client?.id || !collectionName) {
-      console.error("Cannot deactivate: Missing client ID or collection name.");
-      setConfirmDialog({ open: false, client: null, isPrivate: false });
-      return;
-    }
-
-    try {
-      const clientRef = doc(db, collectionName, client.id);
-      await deleteDoc(clientRef);
-      console.log(`Client ${client.id} deactivated from ${collectionName}.`);
-    } catch (error) {
-      console.error("Error deactivating client:", error);
-    }
-    
-    setConfirmDialog({ open: false, client: null, isPrivate: false });
-    await refreshClients(); // Refresh the data after deletion
-  };
-
-  const cancelDeactivate = () => {
-    setConfirmDialog({ open: false, client: null, isPrivate: false });
-  };
-
   const tabAddButtons = [
     <Button
       key="dedicated"
@@ -483,9 +541,6 @@ export default function SeatMapTable() {
         value={tabIndex}
         onChange={(_, newValue) => {
           setTabIndex(newValue);
-          // Re-fetch data if tab is switched to and not yet loaded, though refreshClients handles this broadly now
-          // if (newValue === 1) setIsPrivateTabLoaded(false); // No longer strictly needed due to refreshClients
-          // if (newValue === 2) setIsVirtualTabLoaded(false); // No longer strictly needed due to refreshClients
         }}
         sx={{ mb: 3 }}
         indicatorColor="primary"
@@ -566,35 +621,35 @@ export default function SeatMapTable() {
                       {tabIndex === 1 ? (
                         client.selectedPO && client.selectedPO.length > 0
                           ? (Array.isArray(client.selectedPO)
-                              ? client.selectedPO
-                              : [client.selectedPO]
-                            ).map((office, idx) => (
-                              <Chip
-                                key={idx}
-                                label={office}
-                                size="small"
-                                sx={{
-                                  bgcolor: blue[50],
-                                  color: blue[800],
-                                  mb: 0.5,
-                                }}
-                              />
-                            ))
+                            ? client.selectedPO
+                            : [client.selectedPO]
+                          ).map((office, idx) => (
+                            <Chip
+                              key={idx}
+                              label={office}
+                              size="small"
+                              sx={{
+                                bgcolor: blue[50],
+                                color: blue[800],
+                                mb: 0.5,
+                              }}
+                            />
+                          ))
                           : <Typography variant="body2" color="text.secondary">None</Typography>
                       ) : (
                         client.selectedSeats && client.selectedSeats.length > 0
                           ? client.selectedSeats.map((seat, idx) => (
-                              <Chip
-                                key={idx}
-                                label={seat}
-                                size="small"
-                                sx={{
-                                  bgcolor: blue[50],
-                                  color: blue[800],
-                                  mb: 0.5,
-                                }}
-                              />
-                            ))
+                            <Chip
+                              key={idx}
+                              label={seat}
+                              size="small"
+                              sx={{
+                                bgcolor: blue[50],
+                                color: blue[800],
+                                mb: 0.5,
+                              }}
+                            />
+                          ))
                           : <Typography variant="body2" color="text.secondary">None</Typography>
                       )}
                     </Stack>
@@ -645,7 +700,7 @@ export default function SeatMapTable() {
                         <Button
                           variant="text"
                           sx={{ color: red[700], fontWeight: 600, textTransform: 'none' }}
-                          onClick={() => handleDeactivateClient(client, tabIndex === 1)}
+                          onClick={() => handleDeactivateClient(client, tabIndex === 0 ? "dedicated" : tabIndex === 1 ? "private" : "virtual")}
                         >
                           Deactivate
                         </Button>
@@ -760,10 +815,10 @@ export default function SeatMapTable() {
         onClose={() => setShowTenantDetails(false)}
         client={tenantDetailsClient}
         onExtend={handleOpenExtensionModal}
-        onEdit={handleEditTenant} 
+        onEdit={handleEditTenant}
       />
 
-      {/* Add Tenant Modals (unchanged) */}
+      {/* Add Tenant Modals */}
       {showAddModal && addModalType === "private" && (
         <AddtenantPO
           showAddModal={showAddModal}
@@ -787,7 +842,7 @@ export default function SeatMapTable() {
         />
       )}
 
-      {/* Extension Billing Modal (unchanged) */}
+      {/* Extension Billing Modal */}
       <ExtensionBillingModal
         open={extensionModalOpen}
         onClose={() => setExtensionModalOpen(false)}
@@ -795,35 +850,54 @@ export default function SeatMapTable() {
         refreshClients={refreshClients}
       />
 
-      {/* --- NEW: Edit Tenant Modal --- */}
+      {/* Edit Tenant Modal */}
       {editTenantModalOpen && (
         <EditTenantModal
           open={editTenantModalOpen}
           onClose={handleCloseEditModal}
           client={clientToEdit}
-          onSave={handleSaveEditedTenant} // Pass the function to handle saving updates
+          refreshClients={refreshClients}
+          onSave={handleSaveEditedTenant}
         />
       )}
-      {/* --- END NEW: Edit Tenant Modal --- */}
 
-      {/* Confirm Deactivate Dialog (unchanged) */}
+      {/* Confirm Deactivation Dialog with Password Input */}
       <Dialog
         open={confirmDialog.open}
         onClose={cancelDeactivate}
-        maxWidth="xs"
-        fullWidth
+        aria-labelledby="confirm-deactivate-title"
+        aria-describedby="confirm-deactivate-description"
       >
-        <DialogTitle>Deactivate Client</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to <b>deactivate</b> client <b>{confirmDialog.client?.name}</b> and remove all their data? This cannot be undone.
+        <DialogTitle id="confirm-deactivate-title">Confirm Deactivation</DialogTitle>
+        <DialogContent dividers>
+          <Typography id="confirm-deactivate-description" gutterBottom>
+            Are you sure you want to deactivate **{confirmDialog.client?.name}** ({confirmDialog.client?.company})?
+            This action cannot be undone. To proceed, please enter your password.
           </Typography>
+          <TextField
+            autoFocus
+            margin="dense"
+            id="password"
+            label="Your Password"
+            type="password"
+            fullWidth
+            variant="outlined"
+            value={confirmDialog.password}
+            onChange={handlePasswordChange}
+            error={!!confirmDialog.error}
+            helperText={confirmDialog.error}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={cancelDeactivate} color="primary">
+          <Button onClick={cancelDeactivate} color="primary" variant="outlined">
             Cancel
           </Button>
-          <Button onClick={confirmDeactivate} color="error" variant="contained">
+          <Button
+            onClick={confirmDeactivate}
+            color="error"
+            variant="contained"
+            disabled={!confirmDialog.password} // Disable button if password is empty
+          >
             Deactivate
           </Button>
         </DialogActions>
