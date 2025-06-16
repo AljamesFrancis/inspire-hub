@@ -304,7 +304,7 @@ function SeatReservationForm() {
       <div className="w-full max-w-3xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-10">
         <button
           type="button"
-          className="mb-4 px-4 py-2 border border-gray-300 rounded hover:bg-gray-100 transition text-gray-700 text-sm"
+          className="mb-4 mt-4 px-4 py-2 border border-gray-300 rounded hover:bg-gray-100 transition text-gray-700 text-sm"
           onClick={() => router.push("/main")}
         >
           Back

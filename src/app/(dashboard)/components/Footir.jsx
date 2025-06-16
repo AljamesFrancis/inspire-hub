@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { FaRobot, FaEnvelope, FaInstagram, FaFacebookF, FaTiktok } from "react-icons/fa";
-import ChatBot from 'react-simple-chatbot';
+
 
 
 const Footer = () => {
@@ -134,38 +134,6 @@ const Footer = () => {
       <footer className="relative bg-[#2b2b2b] text-center py-6 mt-10">
         <p className="text-sm text-gray-600">&copy; 2020–2025 Inspire Holdings Inc & Inspire Next Global Inc.</p>
 
-        {/* Chatbot Toggle Button */}
-        <button
-          onClick={() => setShowChatbot(!showChatbot)}
-          className="fixed bottom-10 right-6 bg-[#d5ae85] text-black p-4 rounded-full shadow-lg hover:bg-red-700 transition-colors"
-          title="Chat with Inspire Team!"
-        >
-          {showChatbot ? <FaEnvelope size={24} /> : <FaEnvelope size={24} />}
-        </button>
-
-        {/* Chatbot Popup */}
-        {showChatbot && (
-          <div className="fixed bottom-24 right-6 z-50">
-            <ChatBot
-              steps={steps}
-              headerTitle="Inspire Support"
-              botDelay={500}
-              width="350px"
-              height="400px"
-              floating={true}
-              opened={showChatbot}
-              toggleFloating={() => setShowChatbot(!showChatbot)}
-              style={{
-                borderRadius: '10px',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-              }}
-              bubbleStyle={{
-                backgroundColor: '#d5ae85',
-                color: '#2b2b2b'
-              }}
-            />
-          </div>
-        )}
       </footer>
     </footer>
   );

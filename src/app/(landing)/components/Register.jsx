@@ -5,7 +5,7 @@ export default function ServcorpBanner() {
     <div className="w-full h-[400px] flex bg-white">
       {/* Text Section */}
       <div className="w-2/3 h-full flex flex-col justify-center px-10 text-black">
-        <h2 className="text-4xl font-light text-[#c29554] text-center">Not a I-Hub client?</h2>
+        <h2 className="text-4xl font-light text-[#c29554] text-center">Not an I-Hub client?</h2>
         <p className="mt-4 text-lg text-[#c29554] text-center">
           Become part of a network of over 60,000 professionals. With offices and workspaces
           in 23 countries in some of the world's most prestigious locations.

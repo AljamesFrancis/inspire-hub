@@ -1,24 +1,24 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { FiPlus, FiTrash2, FiClock, FiUser, FiMail, FiPhone, FiCalendar, FiInfo, FiArrowLeft } from "react-icons/fi";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useSearchParams } from "next/navigation";
-import { sendReservationEmail  } from "../../(admin)/utils/email";
+import { sendReservationEmail } from "../../(admin)/utils/email";
 
 // Meeting room info (for dynamic display/rates)
 const MEETING_ROOMS = {
-  boracay: { name: 'Boracay', price: 2800, capacity: 9 },
+  boracay: { name: 'Boracay', price: 2800, capacity: "9 - 12" },
   coron: { name: 'Coron', price: 1450, capacity: 5 },
-  elnido: { name: 'El Nido', price: 4300, capacity: 12 },
-  siargao: { name: 'Siargao', price: 11000, capacity: 20 },
+  elnido: { name: 'El Nido', price: 4300, capacity: "12 - 16" },
+  siargao: { name: 'Siargao', price: 11000, capacity: 50 },
 };
 
 const initialTimeSlots = [
-  { time: "07", status: "busy" },
+  { time: "07", status: "available" },
   { time: "08", status: "available" },
   { time: "09", status: "available" },
   { time: "10", status: "available" },
@@ -36,14 +36,18 @@ const initialTimeSlots = [
 const statusStyles = {
   available: "bg-white border border-gray-300",
   selected: "bg-blue-500 text-white border border-blue-600",
-  busy: "bg-gray-200 border border-gray-300 cursor-not-allowed",
+  busy: "bg-gray-200 border border-gray-300 cursor-not-allowed", // Changed to busy for general unavailability
+  reserved: "bg-red-500 text-white border border-red-600 cursor-not-allowed", // Added for explicitly reserved (accepted)
+  tentative: "bg-orange-300 border border-orange-400 cursor-not-allowed", // Orange for tentative
   "after-hours": "bg-gray-100 border border-gray-300 bg-[repeating-linear-gradient(45deg,_#f0f0f0_0,_#f0f0f0_5px,_#fff_5px,_#fff_10px)]",
 };
 
 const statusLabels = {
   available: "Available",
   selected: "Selected",
-  busy: "Unavailable",
+  busy: "Unavailable", // General unavailable label
+  reserved: "Reserved", // Specific for accepted bookings
+  tentative: "Tentative Booking", // Label for tentative
   "after-hours": "After Hours (+20%)"
 };
 
@@ -80,8 +84,74 @@ export default function TimeSlotSchedule() {
   const [slots, setSlots] = useState(initialTimeSlots);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Function to fetch and update reserved and tentative slots
+  const fetchBookedSlots = async (selectedDate) => {
+    if (!selectedDate || !room.name) {
+      setSlots(initialTimeSlots); // Reset to initial if no date or room
+      return;
+    }
+
+    try {
+      const q = query(
+        collection(db, "meeting room"),
+        where("date", "==", selectedDate),
+        where("room", "==", room.name)
+      );
+      const querySnapshot = await getDocs(q);
+
+      const reservedSlots = [];
+      const tentativeSlots = [];
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        const fromTime = parseInt(data.from_time.split(":")[0]);
+        const duration = parseInt(data.duration);
+        const toTime = fromTime + duration;
+
+        for (let i = fromTime; i < toTime; i++) {
+          if (i >= 7 && i <= 19) { // Only consider hours within the operational range
+            if (data.status === "accepted") {
+              reservedSlots.push(i.toString().padStart(2, "0"));
+            } else if (data.status === "pending") {
+              tentativeSlots.push(i.toString().padStart(2, "0"));
+            }
+          }
+        }
+      });
+
+      const updatedSlots = initialTimeSlots.map((slot) => {
+        if (reservedSlots.includes(slot.time)) {
+          return { ...slot, status: "reserved" };
+        } else if (tentativeSlots.includes(slot.time)) {
+          return { ...slot, status: "tentative" };
+        } else if (parseInt(slot.time) >= 17) {
+          return { ...slot, status: "after-hours" };
+        }
+        return { ...slot, status: "available" };
+      });
+      setSlots(updatedSlots);
+    } catch (error) {
+      console.error("Error fetching booked slots: ", error);
+      toast.error("Failed to load availability. Please try again.", { position: "top-center" });
+    }
+  };
+
+  // useEffect to fetch booked slots when date or room changes
+  useEffect(() => {
+    if (formData.date && room.name) {
+      fetchBookedSlots(formData.date);
+    } else {
+      setSlots(initialTimeSlots); // Reset slots if no date or room is selected
+    }
+  }, [formData.date, room.name]);
+
   const updateSelectedSlots = (startTime, duration) => {
-    if (!startTime || !duration) return;
+    // If startTime or duration are empty, revert slots to their fetched (booked) state
+    if (!startTime || !duration) {
+      fetchBookedSlots(formData.date);
+      return;
+    }
+
     const startHour = parseInt(toMilitaryTime(startTime).split(":")[0]);
     const durationHours = parseInt(duration);
     const endHour = startHour + durationHours;
@@ -91,46 +161,49 @@ export default function TimeSlotSchedule() {
         position: "top-center",
         autoClose: 3000,
       });
+      fetchBookedSlots(formData.date); // Revert on invalid duration
       return;
     }
 
-    const newSlots = initialTimeSlots.map((slot) => {
+    let hasConflict = false;
+    const newSlots = slots.map((slot) => {
       const slotHour = parseInt(slot.time);
-      if (
-        slotHour >= startHour &&
-        slotHour < endHour
-      ) {
-        if (slot.status === "busy") {
-          return { ...slot, status: "busy" };
+      if (slotHour >= startHour && slotHour < endHour) {
+        // If the slot is reserved or tentative, it's a conflict
+        if (slot.status === "reserved" || slot.status === "tentative") {
+          hasConflict = true;
+          return slot; // Keep its reserved/tentative status
         } else {
           return { ...slot, status: "selected" };
         }
       }
+      // If a slot was previously selected but is now outside the new selection, revert it
+      if (slot.status === "selected") {
+          // Determine its original status by re-evaluating against all booked slots
+          const isReserved = slots.some(s => s.time === slot.time && s.status === "reserved");
+          const isTentative = slots.some(s => s.time === slot.time && s.status === "tentative");
+
+          if (isReserved) return { ...slot, status: "reserved" };
+          if (isTentative) return { ...slot, status: "tentative" };
+          if (parseInt(slot.time) >= 17) return { ...slot, status: "after-hours" };
+          return { ...slot, status: "available" };
+      }
       return slot;
     });
 
-    const hasBusyConflict = newSlots.some((slot) => {
-      const slotHour = parseInt(slot.time);
-      return (
-        slotHour >= startHour &&
-        slotHour < endHour &&
-        slot.status === "busy"
-      );
-    });
+    if (hasConflict) {
+      toast.error("Selected time overlaps with unavailable or tentative slots. Please review and re-select.", {
+        position: "top-center",
+        autoClose: 3000,
+      });
+      fetchBookedSlots(formData.date); // Re-fetch to display actual booked slots after conflict
+      return;
+    }
 
     const includesAfterHours = newSlots.some((slot) => {
       const slotHour = parseInt(slot.time);
       return slotHour >= startHour && slotHour < endHour && slotHour >= 17;
     });
-
-    if (hasBusyConflict) {
-      toast.error("Selected time overlaps with unavailable slots", {
-        position: "top-center",
-        autoClose: 3000,
-      });
-      setSlots(initialTimeSlots);
-      return;
-    }
 
     if (includesAfterHours) {
       toast.warning("After-hours booking (additional charges apply)", {
@@ -138,7 +211,6 @@ export default function TimeSlotSchedule() {
         autoClose: 4000,
       });
     }
-
     setSlots(newSlots);
   };
 
@@ -148,6 +220,7 @@ export default function TimeSlotSchedule() {
     if (name === "date") {
       const selectedDate = new Date(value);
       const day = selectedDate.getDay();
+      // Check for weekends (0 for Sunday, 6 for Saturday)
       if (day === 0 || day === 6) {
         toast.error("Weekend bookings are not available", {
           position: "top-center",
@@ -160,7 +233,21 @@ export default function TimeSlotSchedule() {
     const updatedFormData = { ...formData, [name]: value };
     setFormData(updatedFormData);
 
-    if ((name === "time" && updatedFormData.duration) || (name === "duration" && updatedFormData.time)) {
+    if (name === "date") {
+      // When date changes, immediately fetch new booked slots and then update selected slots if time/duration are already set
+      fetchBookedSlots(updatedFormData.date).then(() => {
+        if (updatedFormData.time && updatedFormData.duration) {
+          updateSelectedSlots(
+            updatedFormData.time,
+            updatedFormData.duration
+          );
+        } else {
+          // If no time/duration selected yet, just update based on new date's availability
+          fetchBookedSlots(updatedFormData.date);
+        }
+      });
+    } else if ((name === "time" && updatedFormData.duration) || (name === "duration" && updatedFormData.time)) {
+      // If both time and duration are set, update selected slots
       setTimeout(() => {
         updateSelectedSlots(
           updatedFormData.time,
@@ -168,7 +255,8 @@ export default function TimeSlotSchedule() {
         );
       }, 0);
     } else if (name === "time" || name === "duration") {
-      setSlots(initialTimeSlots);
+      // If only one of time/duration changed, and the other is not set, revert to fetched slots
+      fetchBookedSlots(updatedFormData.date);
     }
   };
 
@@ -203,6 +291,7 @@ export default function TimeSlotSchedule() {
     if (formData.time) {
       const startHour = parseInt(toMilitaryTime(formData.time).split(":")[0]);
       const selectedEndHour = startHour + duration;
+      // Calculate after-hours overlap for pricing
       const afterHoursOverlap = Math.max(0, Math.min(selectedEndHour, 20) - Math.max(startHour, 17));
 
       if (afterHoursOverlap > 0) {
@@ -227,17 +316,17 @@ export default function TimeSlotSchedule() {
     const durationHours = parseInt(formData.duration);
     const endHour = startHour + durationHours;
 
-    const hasBusyConflict = slots.some((slot) => {
+    const hasConflict = slots.some((slot) => {
       const slotHour = parseInt(slot.time);
       return (
         slotHour >= startHour &&
         slotHour < endHour &&
-        slot.status === "busy"
+        (slot.status === "reserved" || slot.status === "tentative") // Check for both reserved and tentative
       );
     });
 
-    if (hasBusyConflict) {
-      toast.error("Your selected time now overlaps with unavailable slots. Please review.", {
+    if (hasConflict) {
+      toast.error("Your selected time now overlaps with unavailable or tentative slots. Please review and re-select.", {
         position: "top-center",
         autoClose: 5000,
       });
@@ -270,13 +359,13 @@ export default function TimeSlotSchedule() {
       from_time: militaryTime,
       to_time: toTime,
       timestamp: new Date(),
-      status: "pending",
+      status: "pending", // Initially set as pending
       totalCost: calculateTotalCost(),
     };
 
     try {
       await addDoc(collection(db, "meeting room"), reservationData);
-      toast.success("Reservation submitted successfully!", { position: "top-center" });
+      toast.success("Reservation submitted successfully! Awaiting confirmation.", { position: "top-center" });
 
       // Send email after successful Firebase submission
       const emailSent = await sendReservationEmail(reservationData);
@@ -286,6 +375,7 @@ export default function TimeSlotSchedule() {
         toast.error("Failed to send confirmation email.", { position: "top-center" });
       }
 
+      // Clear form data
       setFormData({
         name: "",
         email: "",
@@ -296,7 +386,8 @@ export default function TimeSlotSchedule() {
         guests: [],
         specialRequests: "",
       });
-      setSlots(initialTimeSlots);
+      // After successful submission, re-fetch booked and tentative slots for the selected date
+      fetchBookedSlots(formData.date); // Use formData.date as it was the selected date for the booking
     } catch (error) {
       console.error("Error adding reservation or sending email: ", error);
       toast.error("Failed to submit reservation. Please try again.", { position: "top-center" });
@@ -393,13 +484,10 @@ export default function TimeSlotSchedule() {
                   onChange={(date) => {
                     let formattedDate = "";
                     if (date) {
-                      // Create a new Date object that represents the selected date
-                      // but is manipulated to appear as the local date in UTC.
+                      // Ensure date is treated as local date for consistency
                       const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-                      // Format it as YYYY-MM-DD
                       const year = localDate.getFullYear();
-                      const month = String(localDate.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+                      const month = String(localDate.getMonth() + 1).padStart(2, '0');
                       const day = String(localDate.getDate()).padStart(2, '0');
                       formattedDate = `${year}-${month}-${day}`;
                     }
@@ -410,11 +498,12 @@ export default function TimeSlotSchedule() {
                   }}
                   filterDate={(date) => {
                     const day = date.getDay();
-                    if (day === 0 || day === 6) return false;
+                    if (day === 0 || day === 6) return false; // Disable weekends
 
                     const today = new Date();
-                    today.setHours(0, 0, 0, 0);
+                    today.setHours(0, 0, 0, 0); // Reset time to compare dates only
 
+                    // Allow selection starting 2 weekdays from today
                     let weekdaysAdded = 0;
                     let checkDate = new Date(today);
                     while (weekdaysAdded < 2) {
@@ -425,10 +514,10 @@ export default function TimeSlotSchedule() {
 
                     return date >= checkDate;
                   }}
-                  minDate={new Date()}
+                  minDate={new Date()} // Disallow past dates
                   className="mt-1 block w-full border border-gray-300 rounded-md px-4 py-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholderText="Select a date"
-                  dateFormat="MMMM d, yyyy" // Changed to yyyy for year
+                  dateFormat="MMMM d, yyyy"
                   required
                 />
               </div>
@@ -442,13 +531,21 @@ export default function TimeSlotSchedule() {
                   required
                 >
                   <option value="">Select Time</option>
-                  {Array.from({ length: 13 }, (_, i) => {
+                  {Array.from({ length: 13 }, (_, i) => { // 7 AM to 7 PM (07-19 military time)
                     const hour = i + 7;
                     const ampm = hour >= 12 ? "PM" : "AM";
                     const displayHour = hour > 12 ? hour - 12 : hour;
+                    const timeValue = `${displayHour}:00 ${ampm}`;
+                    const militaryHour = hour.toString().padStart(2, '0');
+
+                    // Disable option if the slot for this hour is reserved or tentative
+                    const isBooked = slots.some(
+                      (slot) => slot.time === militaryHour && (slot.status === "reserved" || slot.status === "tentative")
+                    );
+
                     return (
-                      <option key={hour} value={`${displayHour}:00 ${ampm}`}>
-                        {displayHour}:00 {ampm}
+                      <option key={hour} value={timeValue} disabled={isBooked}>
+                        {displayHour}:00 {ampm} {isBooked ? "(Unavailable)" : ""}
                       </option>
                     );
                   })}
@@ -464,11 +561,40 @@ export default function TimeSlotSchedule() {
                   required
                 >
                   <option value="">Select Duration</option>
-                  {Array.from({ length: 10 }, (_, i) => (
-                    <option key={i} value={`${i + 1}`}>
-                      {i + 1} hour{i !== 0 ? "s" : ""}
-                    </option>
-                  ))}
+                  {Array.from({ length: 10 }, (_, i) => {
+                    const durationHours = i + 1;
+                    const startHour = formData.time ? parseInt(toMilitaryTime(formData.time).split(":")[0]) : null;
+                    const endHour = startHour !== null ? startHour + durationHours : null;
+
+                    // Disable duration if it causes an overlap with reserved/tentative slots
+                    let isDisabled = false;
+                    if (startHour !== null) {
+                      for (let h = startHour; h < endHour; h++) {
+                        const militaryHour = h.toString().padStart(2, '0');
+                        const conflict = slots.find(
+                          (slot) => slot.time === militaryHour && (slot.status === "reserved" || slot.status === "tentative")
+                        );
+                        if (conflict) {
+                          isDisabled = true;
+                          break;
+                        }
+                        // Also check if duration extends beyond 8 PM
+                        if (h >= 20) { // 20:00 is 8 PM. If any part of the booking is at or after 8 PM, it's invalid.
+                          isDisabled = true;
+                          break;
+                        }
+                      }
+                    } else if (formData.time) { // If time is selected but startHour couldn't be parsed
+                        isDisabled = true;
+                    }
+
+
+                    return (
+                      <option key={i} value={`${durationHours}`} disabled={isDisabled}>
+                        {durationHours} hour{durationHours !== 1 ? "s" : ""} {isDisabled ? "(Conflict)" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
@@ -485,7 +611,7 @@ export default function TimeSlotSchedule() {
                       className={`flex-1 h-12 flex items-center justify-center transition-colors ${statusStyles[slot.status]}`}
                       title={statusLabels[slot.status]}
                     >
-                      <span className={`text-xs font-medium ${slot.status === "selected" ? "text-white" : "text-gray-700"}`}>
+                      <span className={`text-xs font-medium ${slot.status === "selected" || slot.status === "reserved" ? "text-white" : "text-gray-700"}`}>
                         {slot.time}:00
                       </span>
                     </div>
@@ -493,7 +619,7 @@ export default function TimeSlotSchedule() {
                 </div>
                 <span className="text-sm text-gray-500">8:00 PM</span>
               </div>
-              
+
               {/* Status Legend */}
               <div className="flex flex-wrap gap-4 text-sm mb-4">
                 {Object.entries(statusStyles).map(([status, style]) => (
@@ -564,7 +690,7 @@ export default function TimeSlotSchedule() {
                   {calculateTotalCost().toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
                 </div>
               </div>
-              
+
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -572,7 +698,7 @@ export default function TimeSlotSchedule() {
               >
                 {isSubmitting ? 'Processing...' : 'Confirm Reservation'}
               </button>
-              
+
               <p className="mt-3 text-xs text-gray-500 text-center">
                 By confirming, you agree to our cancellation policy.
               </p>
