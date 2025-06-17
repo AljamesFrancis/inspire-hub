@@ -346,13 +346,14 @@ const AdminDashboard = () => {
             <TableRow>
               <TableCell align="center">Name</TableCell>
               <TableCell align="center">Email</TableCell>
+              <TableCell align="center">Room</TableCell>{/* Added Room column */}
               <TableCell align="center">Date</TableCell>
               <TableCell align="center">From</TableCell>
               <TableCell align="center">To</TableCell>
               <TableCell align="center">Duration</TableCell>
               <TableCell align="center">Guests</TableCell>
               <TableCell align="center">Status</TableCell>
-              <TableCell align="center">Request Date</TableCell> {/* Added Request Date column */}
+              <TableCell align="center">Request Date</TableCell>
               <TableCell align="center">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -360,13 +361,13 @@ const AdminDashboard = () => {
             {currentItems.map((res) => {
               let chipLabel = "-";
               let chipColor = "default";
-              if (res.status === "accepted" && !isCurrentMeeting(res, nowLocalRef.current)) { // Use nowLocalRef.current
+              if (res.status === "accepted" && !isCurrentMeeting(res, nowLocalRef.current)) {
                 chipLabel = "Accepted";
                 chipColor = "success";
               } else if (res.status === "pending") {
                 chipLabel = "Pending";
                 chipColor = "warning";
-              } else if (res.status === "accepted" && isCurrentMeeting(res, nowLocalRef.current)) { // Use nowLocalRef.current
+              } else if (res.status === "accepted" && isCurrentMeeting(res, nowLocalRef.current)) {
                 chipLabel = "Ongoing";
                 chipColor = "info";
               }
@@ -406,6 +407,21 @@ const AdminDashboard = () => {
                       />
                     ) : (
                       res.email
+                    )}
+                  </TableCell>
+                  {/* New TableCell for Room */}
+                  <TableCell align="center">
+                    {editId === res.id ? (
+                      <TextField
+                        variant="standard"
+                        value={editedData.room || ""}
+                        onChange={(e) =>
+                          setEditedData({ ...editedData, room: e.target.value })
+                        }
+                        size="small"
+                      />
+                    ) : (
+                      res.room || "-"
                     )}
                   </TableCell>
                   <TableCell align="center">
@@ -608,7 +624,7 @@ const AdminDashboard = () => {
             })}
             {currentItems.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 4 }}> {/* Increased colspan */}
+                <TableCell colSpan={11} align="center" sx={{ py: 4 }}> {/* Increased colspan */}
                   <Typography color="text.secondary">
                     No reservations found for this category.
                   </Typography>
@@ -644,6 +660,9 @@ const AdminDashboard = () => {
                 <strong>Email:</strong> {detailsDialog.data.email || "-"}
               </Typography>
               <Typography>
+                <strong>Room:</strong> {detailsDialog.data.room || "-"}{/* Added Room to details */}
+              </Typography>
+              <Typography>
                 <strong>Date:</strong> {detailsDialog.data.date ? new Date(detailsDialog.data.date + 'T00:00:00').toLocaleDateString("en-US") : "-"}
               </Typography>
               <Typography>
@@ -672,7 +691,7 @@ const AdminDashboard = () => {
               </Typography>
               <Typography>
                 <strong>Request Date:</strong> {detailsDialog.data.requestDate || "-"}
-              </Typography> {/* Added Request Date to details */}
+              </Typography>
             </Stack>
           )}
         </DialogContent>
