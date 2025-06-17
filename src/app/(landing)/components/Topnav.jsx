@@ -144,7 +144,7 @@ export default function Topnav() {
         </div>
 
         {/* Mobile Menu Button (Hamburger/X Icon) - visible only on md screens and below */}
-        <div className="md:hidden flex items-center mr-10">
+        <div className="md:hidden flex items-center">
           <button
             onClick={toggleMobileMenu}
             className="text-white focus:outline-none text-xl sm:text-2xl"
