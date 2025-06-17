@@ -7,7 +7,7 @@ import {
   query,
   doc,
   updateDoc,
-  getDoc,
+  // getDoc, // getDoc is imported twice, remove one
 } from "firebase/firestore";
 
 import { Monitor } from "lucide-react";
@@ -66,7 +66,7 @@ export async function accept(visitId, collectionName) {
   if (!visitId) throw new Error("Missing visitId");
   try {
     const visitRef = doc(db, collectionName, visitId);
-    const visitDoc = await getDoc(visitRef);
+    const visitDoc = await getDoc(visitRef); // Keep this getDoc import
 
     if (!visitDoc.exists()) throw new Error("Visit not found");
 
@@ -91,7 +91,7 @@ export async function reject(visitId, collectionName, reason) {
   if (!visitId) throw new Error("Missing visitId");
   try {
     const visitRef = doc(db, collectionName, visitId);
-    const visitDoc = await getDoc(visitRef);
+    const visitDoc = await getDoc(visitRef); // Keep this getDoc import
 
     if (!visitDoc.exists()) throw new Error("Visit not found");
 
@@ -179,12 +179,31 @@ export default function ClientsPage() {
     fetchOccupiedSeats();
   }, []);
 
+  // Helper function to format Firestore Timestamp or ISO string
+ const formatTimestampToDateString = (timestamp) => {
+  if (!timestamp) return "N/A";
+  let date;
+  if (timestamp.seconds) { // Firestore Timestamp object
+  date = new Date(timestamp.seconds * 1000);
+  } else if (typeof timestamp === 'string') { // ISO string
+  date = new Date(timestamp);
+  } else if (timestamp instanceof Date) { // Already a Date object
+  date = timestamp;
+  } else {
+  console.warn("Unexpected date format:", timestamp); // Log unexpected formats
+  return "N/A";
+  }
+  return date.toLocaleDateString('en-US'); // Format as desired
+ };
+
   const fetchVisitData = async () => {
     const q = query(collection(db, "visitMap"), where("status", "==", "pending"));
     const querySnapshot = await getDocs(q);
     const docs = querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
+      // Add requestDate field, converting Firestore Timestamp if necessary
+      requestDate: doc.data().requestDate ? formatTimestampToDateString(doc.data().requestDate) : "N/A",
     }));
     setVisitClients(docs);
   };
@@ -195,6 +214,8 @@ export default function ClientsPage() {
     const docs = querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
+      // Add requestDate field, converting Firestore Timestamp if necessary
+      requestDate: doc.data().requestDate ? formatTimestampToDateString(doc.data().requestDate) : "N/A",
     }));
     setOfficeVisitClients(docs);
   };
@@ -205,6 +226,8 @@ export default function ClientsPage() {
     const docs = querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
+      // Add requestDate field, converting Firestore Timestamp if necessary
+      requestDate: doc.data().requestDate ? formatTimestampToDateString(doc.data().requestDate) : "N/A",
     }));
     setVirtualOfficeInquiryClients(docs);
   };
@@ -498,6 +521,12 @@ export default function ClientsPage() {
                     : "N/A"}
                 </TableCell>
               </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Request Date</TableCell> {/* Added Request Date */}
+                <TableCell>
+                  {office.requestDate || "N/A"}
+                </TableCell>
+              </TableRow>
             </TableBody>
           </Table>
         </TableContainer>
@@ -554,6 +583,12 @@ export default function ClientsPage() {
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Inquiry Time</TableCell>
                 <TableCell>{inquiry.time || "N/A"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Request Date</TableCell> {/* Added Request Date */}
+                <TableCell>
+                  {inquiry.requestDate || "N/A"}
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -613,9 +648,17 @@ export default function ClientsPage() {
                       </Typography>
                     }
                     secondary={
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        {client.company}
-                      </Typography>
+                      <>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {client.company}
+                        </Typography>
+                        {/* Display Request Date in the sidebar list */}
+                        {client.requestDate && (
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            Requested: {client.requestDate}
+                          </Typography>
+                        )}
+                      </>
                     }
                   />
                   {client.reservedSeats?.length > 0 && activeTab === 0 && (
@@ -753,7 +796,7 @@ export default function ClientsPage() {
                     <Stack direction="row" spacing={1} alignItems="center">
                       <EventIcon fontSize="small" color="action" />
                       <Typography variant="body2">
-                        Date:{" "}
+                        Visit Date:{" "}
                         {selectedClient.date
                           ? selectedClient.date.seconds
                             ? new Date(selectedClient.date.seconds * 1000).toLocaleDateString()
@@ -762,6 +805,15 @@ export default function ClientsPage() {
                         {activeTab === 2 && selectedClient.time && `, Time: ${selectedClient.time}`}
                       </Typography>
                     </Stack>
+                    {/* Add Request Date here for Seat Tab */}
+                    {activeTab === 0 && selectedClient.requestDate && (
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <EventIcon fontSize="small" color="action" />
+                        <Typography variant="body2">
+                          Request Date: {selectedClient.requestDate}
+                        </Typography>
+                      </Stack>
+                    )}
                     {activeTab === 0 && selectedClient.reservedSeats?.length > 0 && (
                       <Stack direction="row" spacing={1} alignItems="center">
                         <SeatIcon fontSize="small" color="action" />
@@ -858,18 +910,18 @@ export default function ClientsPage() {
         ) : (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
             <Typography variant="body1" color="text.secondary">
-              Select a client from the sidebar to view details
+              Select a client request from the sidebar to view details.
             </Typography>
           </Paper>
         )}
+        <RejectReasonModal
+          open={showRejectModal}
+          onClose={handleCloseRejectModal}
+          onConfirm={handleConfirmReject}
+          reason={rejectionReason}
+          setReason={setRejectionReason}
+        />
       </Box>
-
-      <RejectReasonModal
-        open={showRejectModal}
-        onClose={handleCloseRejectModal}
-        onConfirm={handleConfirmReject}
-        isSubmitting={isRejecting}
-      />
     </Box>
   );
 }

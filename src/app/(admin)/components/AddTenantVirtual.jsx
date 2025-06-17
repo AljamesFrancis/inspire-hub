@@ -84,7 +84,6 @@ export default function AddVirtualOfficeTenantModal({
       billingAddress: "",
       monthsToAvail: 1,
       total: 0,
-      staus: "active",
     },
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -149,6 +148,7 @@ export default function AddVirtualOfficeTenantModal({
           total: computedTotal,
         },
         type: "virtual-office", // Optionally tag as virtual office
+        status: "active",
       };
       await addDoc(collection(db, "virtualOffice"), tenantData);
 

@@ -138,6 +138,8 @@ const AdminDashboard = () => {
         date: normalizeDateField(d.date),
         from_time: normalizeTimeField(d.from_time),
         to_time: normalizeTimeField(d.to_time),
+        // Normalize requestDate here
+        requestDate: d.requestDate ? new Date(d.requestDate.seconds * 1000).toLocaleString() : "-",
       };
     });
 
@@ -350,6 +352,7 @@ const AdminDashboard = () => {
               <TableCell align="center">Duration</TableCell>
               <TableCell align="center">Guests</TableCell>
               <TableCell align="center">Status</TableCell>
+              <TableCell align="center">Request Date</TableCell> {/* Added Request Date column */}
               <TableCell align="center">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -500,6 +503,10 @@ const AdminDashboard = () => {
                       size="small"
                     />
                   </TableCell>
+                  {/* New TableCell for Request Date */}
+                  <TableCell align="center">
+                    {res.requestDate || "-"}
+                  </TableCell>
                   <TableCell align="center">
                     {editId === res.id ? (
                       <Stack direction="row" spacing={1} justifyContent="center">
@@ -601,7 +608,7 @@ const AdminDashboard = () => {
             })}
             {currentItems.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 4 }}> {/* Increased colspan */}
                   <Typography color="text.secondary">
                     No reservations found for this category.
                   </Typography>
@@ -663,6 +670,9 @@ const AdminDashboard = () => {
               <Typography>
                 <strong>Status:</strong> {detailsDialog.data.status || "-"}
               </Typography>
+              <Typography>
+                <strong>Request Date:</strong> {detailsDialog.data.requestDate || "-"}
+              </Typography> {/* Added Request Date to details */}
             </Stack>
           )}
         </DialogContent>

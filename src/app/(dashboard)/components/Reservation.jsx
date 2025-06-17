@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs, serverTimestamp } from "firebase/firestore";
 import { FiPlus, FiTrash2, FiClock, FiUser, FiMail, FiPhone, FiCalendar, FiInfo, FiArrowLeft } from "react-icons/fi";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -361,6 +361,7 @@ export default function TimeSlotSchedule() {
       timestamp: new Date(),
       status: "pending", // Initially set as pending
       totalCost: calculateTotalCost(),
+      requestDate: serverTimestamp(),
     };
 
     try {

@@ -14,8 +14,8 @@ const rooms = [
     description: 'A cozy room perfect for small team meetings or individual work sessions. Features natural lighting and comfortable seating. Capacity: 9 - 12',
     images: [
       '/images/IMG_5296.jpg', // Main image for Boracay, also used for BG
+      '/images/boracay1.jpg',
       '/images/boracay2.jpg',
-      '/images/boracay3.jpg',
     ],
   },
   {
@@ -40,8 +40,8 @@ const rooms = [
     description: 'A versatile mid-sized room, great for brainstorming sessions or client meetings. Configurable layout options available. Capacity: 12 - 16',
     images: [
       '/images/IMG_5330.jpg', // Main image for El Nido, also used for BG
+      '/images/El_Nido1.jpg',
       '/images/El_Nido2.jpg',
-      '/images/El_Nido3.jpg',
     ],
   },
   {
@@ -53,8 +53,8 @@ const rooms = [
     description: 'An intimate space designed for private calls, one-on-one meetings, or focused individual tasks. Quiet and professional. Capacity: 5',
     images: [
       '/images/IMG_5283.jpg', // Main image for Coron, also used for BG
+      '/images/coron1.jpg',
       '/images/coron2.jpg',
-      '/images/coron3.jpg',
     ],
   },
 ];
