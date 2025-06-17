@@ -36,11 +36,9 @@ const Page = () => {
   const goToSlide = (index) => {
     setIsAnimating(true);
     setCurrentIndex(index);
-    // The animation duration is 1000ms (1 second), so we set the timeout accordingly.
     setTimeout(() => setIsAnimating(false), 1000);
   };
 
-  // Function to go to the next slide
   const goToNextSlide = () => {
     if (!isAnimating) {
       const nextIndex = (currentIndex + 1) % carouselItems.length;
@@ -48,7 +46,6 @@ const Page = () => {
     }
   };
 
-  // Function to go to the previous slide
   const goToPrevSlide = () => {
     if (!isAnimating) {
       const prevIndex = (currentIndex - 1 + carouselItems.length) % carouselItems.length;
@@ -74,7 +71,7 @@ const Page = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isAnimating) {
-        goToNextSlide(); // Use goToNextSlide for automatic progression
+        goToNextSlide();
       }
     }, 5000);
     return () => clearInterval(interval);
@@ -137,7 +134,8 @@ const Page = () => {
           {/* Previous Button */}
           <button
             onClick={goToPrevSlide}
-            className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full shadow-lg z-30 transition-colors duration-300 hidden sm:block"
+            // Removed: hidden sm:block
+            className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full shadow-lg z-30 transition-colors duration-300"
             aria-label="Previous slide"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
@@ -146,7 +144,8 @@ const Page = () => {
           {/* Next Button */}
           <button
             onClick={goToNextSlide}
-            className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full shadow-lg z-30 transition-colors duration-300 hidden sm:block"
+            // Removed: hidden sm:block
+            className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full shadow-lg z-30 transition-colors duration-300"
             aria-label="Next slide"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>

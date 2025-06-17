@@ -121,7 +121,8 @@ const Dashboard = () => {
 
           if (config.isTenant) {
             docs.forEach(tenant => {
-              if (tenant.billing && tenant.billing.billingEndDate) {
+              // Added check for tenant.status === "active"
+              if (tenant.status === "active" && tenant.billing && tenant.billing.billingEndDate) {
                 const daysRemaining = calculateDaysRemaining(tenant.billing.billingEndDate);
                 if (daysRemaining !== null && daysRemaining <= 30 && daysRemaining >= 0) {
                   currentExpiringTenants.push({

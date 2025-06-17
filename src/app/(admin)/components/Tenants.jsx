@@ -1,6 +1,6 @@
 "use client";
 import { db } from "../../../../script/firebaseConfig";
-import { collection, getDocs, doc, updateDoc, deleteField, serverTimestamp, query, where } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteField, serverTimestamp, query, where, getDoc } from "firebase/firestore";
 import React, { useState, useEffect } from "react";
 import { Monitor } from "lucide-react";
 import seatMap1 from "../../(admin)/seatMap1.json";
@@ -340,69 +340,98 @@ export default function SeatMapTable() {
   };
 
   // --- CORRECTED: confirmDeactivate to use state variables and add password verification ---
-  const confirmDeactivate = async () => {
-    const auth = getAuth();
-    const user = auth.currentUser;
 
-    if (!user) {
-      setConfirmDialog((prev) => ({ ...prev, error: "No authenticated user found. Please log in again." }));
-      return;
-    }
+const confirmDeactivate = async () => {
+  const auth = getAuth();
+  const user = auth.currentUser;
 
-    const { client, type, password } = confirmDialog;
+  if (!user) {
+    setConfirmDialog((prev) => ({ ...prev, error: "No authenticated user found. Please log in again." }));
+    return;
+  }
 
-    if (!client || !client.id || !type || !password) {
-      setConfirmDialog((prev) => ({ ...prev, error: "Missing client data, type, or password." }));
-      return;
-    }
+  const { client, type, password } = confirmDialog;
 
+  if (!client || !client.id || !type || !password) {
+    setConfirmDialog((prev) => ({ ...prev, error: "Missing client data, type, or password." }));
+    return;
+  }
+
+  try {
+    // 1. Reauthenticate the user with their password
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
+    console.log("User reauthenticated successfully.");
+
+    // --- Fetch user's firstName from Firestore ---
+    let deactivatedByName = null; // Initialize as null
     try {
-      // 1. Reauthenticate the user with their password
-      const credential = EmailAuthProvider.credential(user.email, password);
-      await reauthenticateWithCredential(user, credential);
-      console.log("User reauthenticated successfully.");
+      console.log("Current authenticated user UID:", user.uid); // For debugging
+      const userDocRef = doc(db, "users", user.uid); // Reference to the user's document in 'users' collection
+      const userDocSnap = await getDoc(userDocRef);
 
-      // 2. If reauthentication is successful, proceed with deactivation
-      let collectionName;
-      const updateData = {
-        status: 'deactivated', // Set status to deactivated
-        deactivatedAt: serverTimestamp(), // Use serverTimestamp() directly
-      };
-
-      // Determine collection and specific fields to delete based on client type
-      if (type === "dedicated") {
-        collectionName = "seatMap";
-        updateData.selectedSeats = deleteField(); // Delete 'selectedSeats' for dedicated desks
-      } else if (type === "private") {
-        collectionName = "privateOffice";
-        updateData.selectedPO = deleteField(); // Delete 'selectedPO' for private offices
-      } else if (type === "virtual") {
-        collectionName = "virtualOffice";
-        // For virtual office clients, you might not have specific resource fields like seats or offices
-        // to clear out in the same way. Add any relevant fields here if needed.
+      if (userDocSnap.exists()) {
+        const userData = userDocSnap.data();
+        console.log("Fetched user data from Firestore:", userData); // For debugging
+        if (userData.firstName) {
+          deactivatedByName = userData.firstName;
+          console.log("Found firstName:", deactivatedByName); // For debugging
+        } else {
+          console.log("firstName field is missing or empty in user document."); // For debugging
+        }
       } else {
-        setConfirmDialog((prev) => ({ ...prev, error: "Unknown client type for deactivation. Aborting." }));
-        return;
+        console.log("User document DOES NOT EXIST for UID:", user.uid); // For debugging
       }
-
-      const clientRef = doc(db, collectionName, client.id); // Use client.id
-      await updateDoc(clientRef, updateData);
-      console.log(`Client ${client.id} status set to 'deactivated' and resource fields cleared in ${collectionName}.`);
-      setConfirmDialog({ open: false, client: null, type: null, password: "", error: "" });
-      await refreshClients(); // Refresh the data after the update
-    } catch (error) {
-      console.error("Error during deactivation process:", error);
-      let errorMessage = "Failed to deactivate client.";
-      if (error.code === "auth/wrong-password") {
-        errorMessage = "Incorrect password. Please try again.";
-      } else if (error.code === "auth/invalid-credential") {
-        errorMessage = "Invalid credentials. Please log in again.";
-      } else if (error.code === "auth/user-mismatch") {
-        errorMessage = "Authentication failed. User mismatch.";
-      }
-      setConfirmDialog((prev) => ({ ...prev, error: errorMessage }));
+    } catch (fetchError) {
+      console.warn("Could not fetch user's first name from Firestore:", fetchError);
+      // deactivatedByName will remain null, leading to 'deactivatedBy' not being added to updateData
     }
-  };
+    // --- End: Fetch user's firstName ---
+
+    // 2. If reauthentication is successful, proceed with deactivation
+    let collectionName;
+    const updateData = {
+      status: 'deactivated', // Set status to deactivated
+      deactivatedAt: serverTimestamp(), // Use serverTimestamp() directly
+      // Conditionally add deactivatedBy field ONLY if deactivatedByName has a value
+      ...(deactivatedByName && { deactivatedBy: deactivatedByName }),
+      deactivatedById: user.uid, // Store the UID of the user who deactivated
+    };
+
+    // Determine collection and specific fields to delete based on client type
+    if (type === "dedicated") {
+      collectionName = "seatMap";
+      updateData.selectedSeats = deleteField(); // Delete 'selectedSeats' for dedicated desks
+    } else if (type === "private") {
+      collectionName = "privateOffice";
+      updateData.selectedPO = deleteField(); // Delete 'selectedPO' for private offices
+    } else if (type === "virtual") {
+      collectionName = "virtualOffice";
+      // For virtual office clients, you might not have specific resource fields like seats or offices
+      // to clear out in the same way. Add any relevant fields here if needed.
+    } else {
+      setConfirmDialog((prev) => ({ ...prev, error: "Unknown client type for deactivation. Aborting." }));
+      return;
+    }
+
+    const clientRef = doc(db, collectionName, client.id); // Use client.id
+    await updateDoc(clientRef, updateData);
+    console.log(`Client ${client.id} status set to 'deactivated' and resource fields cleared in ${collectionName}.`);
+    setConfirmDialog({ open: false, client: null, type: null, password: "", error: "" });
+    await refreshClients(); // Refresh the data after the update
+  } catch (error) {
+    console.error("Error during deactivation process:", error);
+    let errorMessage = "Failed to deactivate client.";
+    if (error.code === "auth/wrong-password") {
+      errorMessage = "Incorrect password. Please try again.";
+    } else if (error.code === "auth/invalid-credential") {
+      errorMessage = "Invalid credentials. Please log in again.";
+    } else if (error.code === "auth/user-mismatch") {
+      errorMessage = "Authentication failed. User mismatch.";
+    }
+    setConfirmDialog((prev) => ({ ...prev, error: errorMessage }));
+  }
+};
 
   const cancelDeactivate = () => {
     setConfirmDialog({ open: false, client: null, type: null, password: "", error: "" });

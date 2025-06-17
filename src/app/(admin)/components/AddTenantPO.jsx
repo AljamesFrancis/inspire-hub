@@ -114,7 +114,7 @@ export default function AddTenantPO({
     offices: false,
     billingRate: false,
     monthsToAvail: false,
-    staus: "active",
+    
   });
 
   // Tabs state
@@ -211,6 +211,7 @@ export default function AddTenantPO({
         },
         officeType: "private office",
         type: "private",
+        status: "active"
       };
 
       await addDoc(collection(db, "privateOffice"), tenantWithOffices);
