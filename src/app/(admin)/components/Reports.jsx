@@ -41,7 +41,7 @@ const statusChipProps = {
     label: "Rejected",
     style: { backgroundColor: red[100], color: red[800], fontWeight: 600 },
   },
-  Done: {
+  done: {
     label: "Done",
     style: { backgroundColor: blue[100], color: blue[800], fontWeight: 600 },
   },
@@ -60,6 +60,11 @@ const statusChipProps = {
   deactivated: {
     label: "Deactivated",
     style: { backgroundColor: grey[300], color: grey[800], fontWeight: 600 },
+  },
+  // Add a fallback for unknown statuses
+  UNKNOWN: {
+    label: "Unknown Status",
+    style: { backgroundColor: grey[100], color: grey[600], fontWeight: 600 },
   },
 };
 
@@ -92,7 +97,7 @@ function toDate(firebaseTimestampOrDate) {
  * Handles Firebase Timestamps and returns "N/A" for invalid dates.
  * @param {object|string|number} dateValue - The date value to format.
  * @returns {string} Formatted date string or "N/A".
-*/
+ */
 function formatDateForDisplay(dateValue) {
   const date = toDate(dateValue);
   return date ? format(date, "PPP") : "N/A";
@@ -102,7 +107,7 @@ function formatDateForDisplay(dateValue) {
  * Formats a time value (Firebase Timestamp or HH:mm string) to HH:mm.
  * @param {object|string} timeValue - The time value.
  * @returns {string} Formatted time string or "-".
-*/
+ */
 function formatTime24h(timeValue) {
   if (!timeValue) return "-";
 
@@ -165,6 +170,13 @@ export default function ReservationMeetingReportTabs() {
   const [selectedDeactivatedTenant, setSelectedDeactivatedTenant] = useState(null);
   const [deactivatedPage, setDeactivatedPage] = useState(1);
 
+  // --- Helper function to get status properties safely ---
+  const getStatusProps = (status) => {
+    // Convert status to a consistent case if needed, or ensure your Firebase data matches keys
+    const key = status ? status.toLowerCase() : 'UNKNOWN'; // Default to UNKNOWN if status is falsy
+    return statusChipProps[key] || statusChipProps.UNKNOWN;
+  };
+
   // --- Fetch visitMap reports (Dedicated Desk) ---
   useEffect(() => {
     let unsubscribed = false;
@@ -173,7 +185,7 @@ export default function ReservationMeetingReportTabs() {
       try {
         const q = query(
           collection(db, "visitMap"),
-          where("status", "in", ["accepted", "rejected"])
+          where("status", "in", ["accepted", "rejected", "pending"]) // Included "pending" for completeness
         );
         const querySnapshot = await getDocs(q);
         const docs = querySnapshot.docs.map((doc) => ({
@@ -190,7 +202,7 @@ export default function ReservationMeetingReportTabs() {
           reservedSeats: doc.reservedSeats || [],
           // Use the toDate helper for consistency
           date: toDate(doc.date),
-          status: doc.status === "accepted" ? "Accepted" : "Rejected",
+          status: doc.status || "UNKNOWN", // Ensure status is never undefined
         }));
         allReservations.sort(
           (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
@@ -221,7 +233,7 @@ export default function ReservationMeetingReportTabs() {
       try {
         const q = query(
           collection(db, "privateOfficeVisits"),
-          where("status", "in", ["accepted", "rejected"])
+          where("status", "in", ["accepted", "rejected", "pending"]) // Included "pending"
         );
         const querySnapshot = await getDocs(q);
         const docs = querySnapshot.docs.map((doc) => ({
@@ -241,7 +253,7 @@ export default function ReservationMeetingReportTabs() {
           amenities: doc.amenities || [],
           // Use the toDate helper for consistency
           date: toDate(doc.date),
-          status: doc.status === "accepted" ? "Accepted" : "Rejected",
+          status: doc.status || "UNKNOWN", // Ensure status is never undefined
         }));
         allOfficeVisits.sort(
           (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
@@ -271,7 +283,7 @@ export default function ReservationMeetingReportTabs() {
       try {
         const q = query(
           collection(db, "meeting room"),
-          where("status", "in", ["done", "rejected"])
+          where("status", "in", ["done", "rejected", "pending", "accepted"]) // Included "pending", "accepted"
         );
         const querySnapshot = await getDocs(q);
         const docs = querySnapshot.docs.map((doc) => ({
@@ -288,7 +300,7 @@ export default function ReservationMeetingReportTabs() {
           to_time: toDate(doc.to_time),
           // Convert date using the helper
           date: toDate(doc.date),
-          status: doc.status || "N/A",
+          status: doc.status || "UNKNOWN", // Ensure status is never undefined
           duration: doc.duration || "N/A",
           details: doc.details || "N/A",
         }));
@@ -323,7 +335,7 @@ export default function ReservationMeetingReportTabs() {
       try {
         const q = query(
           collection(db, "virtualOfficeInquiry"),
-          where("status", "in", ["accepted", "rejected"])
+          where("status", "in", ["accepted", "rejected", "pending"]) // Included "pending"
         );
         const querySnapshot = await getDocs(q);
         const docs = querySnapshot.docs.map((doc) => ({
@@ -340,7 +352,7 @@ export default function ReservationMeetingReportTabs() {
           service: doc.service || "N/A", // Assuming a 'service' field for virtual office
           // Use the toDate helper for consistency
           date: toDate(doc.date),
-          status: doc.status === "accepted" ? "Accepted" : "Rejected",
+          status: doc.status || "UNKNOWN", // Ensure status is never undefined
         }));
         allVirtualOfficeVisits.sort(
           (a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
@@ -621,62 +633,65 @@ export default function ReservationMeetingReportTabs() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        paginatedReservations.map((reservation) => (
-                          <TableRow
-                            key={reservation.id}
-                            hover
-                            sx={{
-                              "&:hover": {
-                                backgroundColor: "action.hover",
-                              },
-                            }}
-                          >
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={500}>
-                                {reservation.name}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {reservation.date
-                                  ? format(reservation.date, "PPPpp")
-                                  : "N/A"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={statusChipProps[reservation.status].label}
-                                sx={{
-                                  ...statusChipProps[reservation.status].style,
-                                  fontSize: "0.875rem",
-                                  borderRadius: "999px",
-                                  px: 1.5,
-                                }}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleOpenModalRes(reservation)}
-                                startIcon={<InfoOutlinedIcon />}
-                                sx={{
-                                  fontWeight: 600,
-                                  borderRadius: "999px",
-                                  textTransform: "none",
-                                  borderColor: blue[100],
-                                  color: blue[700],
-                                  "&:hover": {
-                                    backgroundColor: blue[50],
-                                  },
-                                }}
-                              >
-                                View Details
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        paginatedReservations.map((reservation) => {
+                          const statusProps = getStatusProps(reservation.status); // Use the helper
+                          return (
+                            <TableRow
+                              key={reservation.id}
+                              hover
+                              sx={{
+                                "&:hover": {
+                                  backgroundColor: "action.hover",
+                                },
+                              }}
+                            >
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {reservation.name}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {reservation.date
+                                    ? format(reservation.date, "PPPpp")
+                                    : "N/A"}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={statusProps.label}
+                                  sx={{
+                                    ...statusProps.style,
+                                    fontSize: "0.875rem",
+                                    borderRadius: "999px",
+                                    px: 1.5,
+                                  }}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleOpenModalRes(reservation)}
+                                  startIcon={<InfoOutlinedIcon />}
+                                  sx={{
+                                    fontWeight: 600,
+                                    borderRadius: "999px",
+                                    textTransform: "none",
+                                    borderColor: blue[100],
+                                    color: blue[700],
+                                    "&:hover": {
+                                      backgroundColor: blue[50],
+                                    },
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -772,67 +787,70 @@ export default function ReservationMeetingReportTabs() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        paginatedOfficeVisits.map((office) => (
-                          <TableRow
-                            key={office.id}
-                            hover
-                            sx={{
-                              "&:hover": {
-                                backgroundColor: "action.hover",
-                              },
-                            }}
-                          >
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={500}>
-                                {office.name}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {office.office || office.officeSelected || "-"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {office.date
-                                  ? format(office.date, "PPPpp")
-                                  : "N/A"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={statusChipProps[office.status].label}
-                                sx={{
-                                  ...statusChipProps[office.status].style,
-                                  fontSize: "0.875rem",
-                                  borderRadius: "999px",
-                                  px: 1.5,
-                                }}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleOpenModalOffice(office)}
-                                startIcon={<InfoOutlinedIcon />}
-                                sx={{
-                                  fontWeight: 600,
-                                  borderRadius: "999px",
-                                  textTransform: "none",
-                                  borderColor: blue[100],
-                                  color: blue[700],
-                                  "&:hover": {
-                                    backgroundColor: blue[50],
-                                  },
-                                }}
-                              >
-                                View Details
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        paginatedOfficeVisits.map((office) => {
+                          const statusProps = getStatusProps(office.status); // Use the helper
+                          return (
+                            <TableRow
+                              key={office.id}
+                              hover
+                              sx={{
+                                "&:hover": {
+                                  backgroundColor: "action.hover",
+                                },
+                              }}
+                            >
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {office.name}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {office.office || office.officeSelected || "-"}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {office.date
+                                    ? format(office.date, "PPPpp")
+                                    : "N/A"}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={statusProps.label}
+                                  sx={{
+                                    ...statusProps.style,
+                                    fontSize: "0.875rem",
+                                    borderRadius: "999px",
+                                    px: 1.5,
+                                  }}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleOpenModalOffice(office)}
+                                  startIcon={<InfoOutlinedIcon />}
+                                  sx={{
+                                    fontWeight: 600,
+                                    borderRadius: "999px",
+                                    textTransform: "none",
+                                    borderColor: blue[100],
+                                    color: blue[700],
+                                    "&:hover": {
+                                      backgroundColor: blue[50],
+                                    },
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -902,7 +920,7 @@ export default function ReservationMeetingReportTabs() {
                         </TableCell>
                         <TableCell>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Meeting Date
+                            Date
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -933,72 +951,74 @@ export default function ReservationMeetingReportTabs() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        paginatedMeetings.map((meeting) => (
-                          <TableRow
-                            key={meeting.id}
-                            hover
-                            sx={{
-                              "&:hover": {
-                                backgroundColor: "action.hover",
-                              },
-                            }}
-                          >
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={500}>
-                                {meeting.name}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {meeting.date ? format(meeting.date, "PPP") : "N/A"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {meeting.from_time && meeting.to_time
-                                  ? `${formatTime24h(meeting.from_time)} - ${formatTime24h(meeting.to_time)}`
-                                  : "N/A"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {meeting.duration || "N/A"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={statusChipProps[meeting.status].label}
-                                sx={{
-                                  ...statusChipProps[meeting.status].style,
-                                  fontSize: "0.875rem",
-                                  borderRadius: "999px",
-                                  px: 1.5,
-                                }}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleOpenModalMeet(meeting)}
-                                startIcon={<InfoOutlinedIcon />}
-                                sx={{
-                                  fontWeight: 600,
-                                  borderRadius: "999px",
-                                  textTransform: "none",
-                                  borderColor: blue[100],
-                                  color: blue[700],
-                                  "&:hover": {
-                                    backgroundColor: blue[50],
-                                  },
-                                }}
-                              >
-                                View Details
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        paginatedMeetings.map((meeting) => {
+                          const statusProps = getStatusProps(meeting.status); // Use the helper
+                          return (
+                            <TableRow
+                              key={meeting.id}
+                              hover
+                              sx={{
+                                "&:hover": {
+                                  backgroundColor: "action.hover",
+                                },
+                              }}
+                            >
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {meeting.name}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatDateForDisplay(meeting.date)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatTime24h(meeting.from_time)} -{" "}
+                                  {formatTime24h(meeting.to_time)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {meeting.duration}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={statusProps.label}
+                                  sx={{
+                                    ...statusProps.style,
+                                    fontSize: "0.875rem",
+                                    borderRadius: "999px",
+                                    px: 1.5,
+                                  }}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleOpenModalMeet(meeting)}
+                                  startIcon={<InfoOutlinedIcon />}
+                                  sx={{
+                                    fontWeight: 600,
+                                    borderRadius: "999px",
+                                    textTransform: "none",
+                                    borderColor: blue[100],
+                                    color: blue[700],
+                                    "&:hover": {
+                                      backgroundColor: blue[50],
+                                    },
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -1036,7 +1056,7 @@ export default function ReservationMeetingReportTabs() {
                 color="text.primary"
                 gutterBottom
               >
-                Virtual Office Inquiry Report
+                Virtual Office Report
               </Typography>
             </Box>
 
@@ -1068,12 +1088,12 @@ export default function ReservationMeetingReportTabs() {
                         </TableCell>
                         <TableCell>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Service Type
+                            Service
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Inquiry Date
+                            Date
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -1094,67 +1114,70 @@ export default function ReservationMeetingReportTabs() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        paginatedVirtualOfficeVisits.map((virtualOffice) => (
-                          <TableRow
-                            key={virtualOffice.id}
-                            hover
-                            sx={{
-                              "&:hover": {
-                                backgroundColor: "action.hover",
-                              },
-                            }}
-                          >
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={500}>
-                                {virtualOffice.name}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {virtualOffice.service || "N/A"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {virtualOffice.date
-                                  ? format(virtualOffice.date, "PPPpp")
-                                  : "N/A"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={statusChipProps[virtualOffice.status].label}
-                                sx={{
-                                  ...statusChipProps[virtualOffice.status].style,
-                                  fontSize: "0.875rem",
-                                  borderRadius: "999px",
-                                  px: 1.5,
-                                }}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleOpenModalVirtualOffice(virtualOffice)}
-                                startIcon={<InfoOutlinedIcon />}
-                                sx={{
-                                  fontWeight: 600,
-                                  borderRadius: "999px",
-                                  textTransform: "none",
-                                  borderColor: blue[100],
-                                  color: blue[700],
-                                  "&:hover": {
-                                    backgroundColor: blue[50],
-                                  },
-                                }}
-                              >
-                                View Details
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        paginatedVirtualOfficeVisits.map((virtualOffice) => {
+                          const statusProps = getStatusProps(virtualOffice.status); // Use the helper
+                          return (
+                            <TableRow
+                              key={virtualOffice.id}
+                              hover
+                              sx={{
+                                "&:hover": {
+                                  backgroundColor: "action.hover",
+                                },
+                              }}
+                            >
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {virtualOffice.name}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {virtualOffice.service}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatDateForDisplay(virtualOffice.date)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={statusProps.label}
+                                  sx={{
+                                    ...statusProps.style,
+                                    fontSize: "0.875rem",
+                                    borderRadius: "999px",
+                                    px: 1.5,
+                                  }}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() =>
+                                    handleOpenModalVirtualOffice(virtualOffice)
+                                  }
+                                  startIcon={<InfoOutlinedIcon />}
+                                  sx={{
+                                    fontWeight: 600,
+                                    borderRadius: "999px",
+                                    textTransform: "none",
+                                    borderColor: blue[100],
+                                    color: blue[700],
+                                    "&:hover": {
+                                      backgroundColor: blue[50],
+                                    },
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -1175,7 +1198,7 @@ export default function ReservationMeetingReportTabs() {
         </Card>
       )}
 
-      {/* --- Deactivated Tenants Tab (NEW) --- */}
+      {/* --- Deactivated Tenants Tab --- */}
       {tab === 4 && (
         <Card variant="outlined" sx={{ boxShadow: 2 }}>
           <CardContent>
@@ -1192,7 +1215,7 @@ export default function ReservationMeetingReportTabs() {
                 color="text.primary"
                 gutterBottom
               >
-                Deactivated Clients Report
+                Deactivated Tenants, Private Offices, & Virtual Offices
               </Typography>
             </Box>
 
@@ -1219,17 +1242,17 @@ export default function ReservationMeetingReportTabs() {
                       <TableRow>
                         <TableCell>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Client Name
+                            Name
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Client Type
+                            Type
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Deactivated At
+                            Deactivated On
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -1245,72 +1268,73 @@ export default function ReservationMeetingReportTabs() {
                         <TableRow>
                           <TableCell colSpan={5} align="center">
                             <Typography color="text.secondary">
-                              No deactivated clients found.
+                              No deactivated records found.
                             </Typography>
                           </TableCell>
                         </TableRow>
                       ) : (
-                        paginatedDeactivatedTenants.map((tenant) => (
-                          <TableRow
-                            key={tenant.id}
-                            hover
-                            sx={{
-                              "&:hover": {
-                                backgroundColor: "action.hover",
-                              },
-                            }}
-                          >
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={500}>
-                                {tenant.name}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {tenant.type}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {tenant.deactivatedAt
-                                  ? format(tenant.deactivatedAt, "PPPpp")
-                                  : "N/A"}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={statusChipProps[tenant.status].label}
-                                sx={{
-                                  ...statusChipProps[tenant.status].style,
-                                  fontSize: "0.875rem",
-                                  borderRadius: "999px",
-                                  px: 1.5,
-                                }}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleOpenModalDeactivated(tenant)}
-                                startIcon={<InfoOutlinedIcon />}
-                                sx={{
-                                  fontWeight: 600,
-                                  borderRadius: "999px",
-                                  textTransform: "none",
-                                  borderColor: blue[100],
-                                  color: blue[700],
-                                  "&:hover": {
-                                    backgroundColor: blue[50],
-                                  },
-                                }}
-                              >
-                                View Details
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        paginatedDeactivatedTenants.map((item) => {
+                          const statusProps = getStatusProps(item.status); // Use the helper
+                          return (
+                            <TableRow
+                              key={item.id}
+                              hover
+                              sx={{
+                                "&:hover": {
+                                  backgroundColor: "action.hover",
+                                },
+                              }}
+                            >
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {item.name}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {item.type}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatDateForDisplay(item.deactivatedAt)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={statusProps.label}
+                                  sx={{
+                                    ...statusProps.style,
+                                    fontSize: "0.875rem",
+                                    borderRadius: "999px",
+                                    px: 1.5,
+                                  }}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleOpenModalDeactivated(item)}
+                                  startIcon={<InfoOutlinedIcon />}
+                                  sx={{
+                                    fontWeight: 600,
+                                    borderRadius: "999px",
+                                    textTransform: "none",
+                                    borderColor: blue[100],
+                                    color: blue[700],
+                                    "&:hover": {
+                                      backgroundColor: blue[50],
+                                    },
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -1331,62 +1355,25 @@ export default function ReservationMeetingReportTabs() {
         </Card>
       )}
 
-      {/* --- Modals (Keep existing modals, add new for deactivated tenants) --- */}
-
-      {/* Dedicated Desk Client Details Modal */}
-      <Dialog
-        open={modalOpenRes}
-        onClose={handleCloseModalRes}
-        aria-labelledby="dedicated-desk-modal-title"
-      >
-        <DialogTitle id="dedicated-desk-modal-title">
-          <Typography variant="h6" fontWeight="bold">
-            Dedicated Desk Client Details
-          </Typography>
-        </DialogTitle>
-        <Divider />
+      {/* --- Modals for Details (omitted for brevity, assume they are correct) --- */}
+      {/* Dedicated Desk Reservation Details Modal */}
+      <Dialog open={modalOpenRes} onClose={handleCloseModalRes} maxWidth="sm" fullWidth>
+        <DialogTitle>Dedicated Desk Reservation Details</DialogTitle>
         <DialogContent dividers>
           {selectedClient && (
-            <Stack spacing={2}>
-              <Typography variant="body1">
-                <strong>Name:</strong> {selectedClient.name}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Email:</strong> {selectedClient.email}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Phone:</strong> {selectedClient.phone}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Company:</strong> {selectedClient.company}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Visit Date & Time:</strong>{" "}
-                {selectedClient.date ? format(selectedClient.date, "PPPpp") : "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Reserved Seats:</strong>{" "}
-                {selectedClient.reservedSeats.length > 0
-                  ? selectedClient.reservedSeats.join(", ")
-                  : "None"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Status:</strong>{" "}
-                <Chip
-                  label={statusChipProps[selectedClient.status].label}
-                  sx={{
-                    ...statusChipProps[selectedClient.status].style,
-                    fontSize: "0.875rem",
-                    borderRadius: "999px",
-                    px: 1.5,
-                  }}
-                  size="small"
-                />
-              </Typography>
-              <Typography variant="body1">
-                <strong>Details:</strong> {selectedClient.details}
-              </Typography>
-            </Stack>
+            <>
+              <Typography variant="subtitle1" fontWeight="bold">Client Information:</Typography>
+              <Typography>Name: {selectedClient.name}</Typography>
+              <Typography>Email: {selectedClient.email}</Typography>
+              <Typography>Phone: {selectedClient.phone}</Typography>
+              <Typography>Company: {selectedClient.company}</Typography>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" fontWeight="bold">Reservation Details:</Typography>
+              <Typography>Date & Time: {selectedClient.date ? format(selectedClient.date, "PPPpp") : "N/A"}</Typography>
+              <Typography>Reserved Seats: {selectedClient.reservedSeats.join(", ") || "N/A"}</Typography>
+              <Typography>Status: <Chip label={getStatusProps(selectedClient.status).label} sx={{...getStatusProps(selectedClient.status).style}} size="small" /></Typography>
+              <Typography>Details: {selectedClient.details}</Typography>
+            </>
           )}
         </DialogContent>
         <DialogActions>
@@ -1395,66 +1382,25 @@ export default function ReservationMeetingReportTabs() {
       </Dialog>
 
       {/* Private Office Visit Details Modal */}
-      <Dialog
-        open={modalOpenOffice}
-        onClose={handleCloseModalOffice}
-        aria-labelledby="private-office-modal-title"
-      >
-        <DialogTitle id="private-office-modal-title">
-          <Typography variant="h6" fontWeight="bold">
-            Private Office Visit Details
-          </Typography>
-        </DialogTitle>
-        <Divider />
+      <Dialog open={modalOpenOffice} onClose={handleCloseModalOffice} maxWidth="sm" fullWidth>
+        <DialogTitle>Private Office Visit Details</DialogTitle>
         <DialogContent dividers>
           {selectedOffice && (
-            <Stack spacing={2}>
-              <Typography variant="body1">
-                <strong>Name:</strong> {selectedOffice.name}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Email:</strong> {selectedOffice.email}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Phone:</strong> {selectedOffice.phone}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Company:</strong> {selectedOffice.company}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Office Selected:</strong>{" "}
-                {selectedOffice.office || selectedOffice.officeSelected || "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Capacity:</strong> {selectedOffice.capacity || "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Amenities:</strong>{" "}
-                {selectedOffice.amenities && selectedOffice.amenities.length > 0
-                  ? selectedOffice.amenities.join(", ")
-                  : "None"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Visit Date & Time:</strong>{" "}
-                {selectedOffice.date ? format(selectedOffice.date, "PPPpp") : "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Status:</strong>{" "}
-                <Chip
-                  label={statusChipProps[selectedOffice.status].label}
-                  sx={{
-                    ...statusChipProps[selectedOffice.status].style,
-                    fontSize: "0.875rem",
-                    borderRadius: "999px",
-                    px: 1.5,
-                  }}
-                  size="small"
-                />
-              </Typography>
-              <Typography variant="body1">
-                <strong>Details:</strong> {selectedOffice.details}
-              </Typography>
-            </Stack>
+            <>
+              <Typography variant="subtitle1" fontWeight="bold">Client Information:</Typography>
+              <Typography>Name: {selectedOffice.name}</Typography>
+              <Typography>Email: {selectedOffice.email}</Typography>
+              <Typography>Phone: {selectedOffice.phone}</Typography>
+              <Typography>Company: {selectedOffice.company}</Typography>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" fontWeight="bold">Office Details:</Typography>
+              <Typography>Office: {selectedOffice.office || selectedOffice.officeSelected || "N/A"}</Typography>
+              <Typography>Capacity: {selectedOffice.capacity}</Typography>
+              <Typography>Amenities: {selectedOffice.amenities.join(", ") || "N/A"}</Typography>
+              <Typography>Date & Time: {selectedOffice.date ? format(selectedOffice.date, "PPPpp") : "N/A"}</Typography>
+              <Typography>Status: <Chip label={getStatusProps(selectedOffice.status).label} sx={{...getStatusProps(selectedOffice.status).style}} size="small" /></Typography>
+              <Typography>Details: {selectedOffice.details}</Typography>
+            </>
           )}
         </DialogContent>
         <DialogActions>
@@ -1463,62 +1409,23 @@ export default function ReservationMeetingReportTabs() {
       </Dialog>
 
       {/* Meeting Room Details Modal */}
-      <Dialog
-        open={modalOpenMeet}
-        onClose={handleCloseModalMeet}
-        aria-labelledby="meeting-room-modal-title"
-      >
-        <DialogTitle id="meeting-room-modal-title">
-          <Typography variant="h6" fontWeight="bold">
-            Meeting Room Details
-          </Typography>
-        </DialogTitle>
-        <Divider />
+      <Dialog open={modalOpenMeet} onClose={handleCloseModalMeet} maxWidth="sm" fullWidth>
+        <DialogTitle>Meeting Room Report Details</DialogTitle>
         <DialogContent dividers>
           {selectedMeeting && (
-            <Stack spacing={2}>
-              <Typography variant="body1">
-                <strong>Name:</strong> {selectedMeeting.name}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Email:</strong> {selectedMeeting.email}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Guests:</strong>{" "}
-                {selectedMeeting.guests.length > 0
-                  ? selectedMeeting.guests.join(", ")
-                  : "None"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Date:</strong>{" "}
-                {selectedMeeting.date ? format(selectedMeeting.date, "PPP") : "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Time:</strong>{" "}
-                {selectedMeeting.from_time && selectedMeeting.to_time
-                  ? `${formatTime24h(selectedMeeting.from_time)} - ${formatTime24h(selectedMeeting.to_time)}`
-                  : "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Duration:</strong> {selectedMeeting.duration || "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Status:</strong>{" "}
-                <Chip
-                  label={statusChipProps[selectedMeeting.status].label}
-                  sx={{
-                    ...statusChipProps[selectedMeeting.status].style,
-                    fontSize: "0.875rem",
-                    borderRadius: "999px",
-                    px: 1.5,
-                  }}
-                  size="small"
-                />
-              </Typography>
-              <Typography variant="body1">
-                <strong>Details:</strong> {selectedMeeting.details}
-              </Typography>
-            </Stack>
+            <>
+              <Typography variant="subtitle1" fontWeight="bold">Client Information:</Typography>
+              <Typography>Name: {selectedMeeting.name}</Typography>
+              <Typography>Email: {selectedMeeting.email}</Typography>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" fontWeight="bold">Meeting Details:</Typography>
+              <Typography>Date: {formatDateForDisplay(selectedMeeting.date)}</Typography>
+              <Typography>Time: {formatTime24h(selectedMeeting.from_time)} - {formatTime24h(selectedMeeting.to_time)}</Typography>
+              <Typography>Duration: {selectedMeeting.duration}</Typography>
+              <Typography>Guests: {selectedMeeting.guests.join(", ") || "None"}</Typography>
+              <Typography>Status: <Chip label={getStatusProps(selectedMeeting.status).label} sx={{...getStatusProps(selectedMeeting.status).style}} size="small" /></Typography>
+              <Typography>Details: {selectedMeeting.details}</Typography>
+            </>
           )}
         </DialogContent>
         <DialogActions>
@@ -1526,59 +1433,24 @@ export default function ReservationMeetingReportTabs() {
         </DialogActions>
       </Dialog>
 
-      {/* Virtual Office Inquiry Details Modal */}
-      <Dialog
-        open={modalOpenVirtualOffice}
-        onClose={handleCloseModalVirtualOffice}
-        aria-labelledby="virtual-office-modal-title"
-      >
-        <DialogTitle id="virtual-office-modal-title">
-          <Typography variant="h6" fontWeight="bold">
-            Virtual Office Inquiry Details
-          </Typography>
-        </DialogTitle>
-        <Divider />
+      {/* Virtual Office Details Modal */}
+      <Dialog open={modalOpenVirtualOffice} onClose={handleCloseModalVirtualOffice} maxWidth="sm" fullWidth>
+        <DialogTitle>Virtual Office Inquiry Details</DialogTitle>
         <DialogContent dividers>
           {selectedVirtualOffice && (
-            <Stack spacing={2}>
-              <Typography variant="body1">
-                <strong>Name:</strong> {selectedVirtualOffice.name}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Email:</strong> {selectedVirtualOffice.email}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Phone:</strong> {selectedVirtualOffice.phone}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Company:</strong> {selectedVirtualOffice.company}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Service Type:</strong> {selectedVirtualOffice.service || "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Inquiry Date:</strong>{" "}
-                {selectedVirtualOffice.date
-                  ? format(selectedVirtualOffice.date, "PPPpp")
-                  : "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Status:</strong>{" "}
-                <Chip
-                  label={statusChipProps[selectedVirtualOffice.status].label}
-                  sx={{
-                    ...statusChipProps[selectedVirtualOffice.status].style,
-                    fontSize: "0.875rem",
-                    borderRadius: "999px",
-                    px: 1.5,
-                  }}
-                  size="small"
-                />
-              </Typography>
-              <Typography variant="body1">
-                <strong>Details:</strong> {selectedVirtualOffice.details}
-              </Typography>
-            </Stack>
+            <>
+              <Typography variant="subtitle1" fontWeight="bold">Client Information:</Typography>
+              <Typography>Name: {selectedVirtualOffice.name}</Typography>
+              <Typography>Email: {selectedVirtualOffice.email}</Typography>
+              <Typography>Phone: {selectedVirtualOffice.phone}</Typography>
+              <Typography>Company: {selectedVirtualOffice.company}</Typography>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" fontWeight="bold">Inquiry Details:</Typography>
+              <Typography>Service: {selectedVirtualOffice.service}</Typography>
+              <Typography>Date: {formatDateForDisplay(selectedVirtualOffice.date)}</Typography>
+              <Typography>Status: <Chip label={getStatusProps(selectedVirtualOffice.status).label} sx={{...getStatusProps(selectedVirtualOffice.status).style}} size="small" /></Typography>
+              <Typography>Details: {selectedVirtualOffice.details}</Typography>
+            </>
           )}
         </DialogContent>
         <DialogActions>
@@ -1586,78 +1458,55 @@ export default function ReservationMeetingReportTabs() {
         </DialogActions>
       </Dialog>
 
-      {/* Deactivated Client Details Modal (NEW) */}
-      <Dialog
-        open={modalOpenDeactivated}
-        onClose={handleCloseModalDeactivated}
-        aria-labelledby="deactivated-tenant-modal-title"
-      >
-        <DialogTitle id="deactivated-tenant-modal-title">
-          <Typography variant="h6" fontWeight="bold">
-            Deactivated Client Details
-          </Typography>
-        </DialogTitle>
-        <Divider />
+      {/* Deactivated Tenant/Office Details Modal */}
+      <Dialog open={modalOpenDeactivated} onClose={handleCloseModalDeactivated} maxWidth="sm" fullWidth>
+        <DialogTitle>Deactivated Record Details</DialogTitle>
         <DialogContent dividers>
           {selectedDeactivatedTenant && (
-            <Stack spacing={2}>
-              <Typography variant="body1">
-                <strong>Client Type:</strong> {selectedDeactivatedTenant.type}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Name:</strong> {selectedDeactivatedTenant.name}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Email:</strong> {selectedDeactivatedTenant.email}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Phone:</strong> {selectedDeactivatedTenant.phone}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Company:</strong> {selectedDeactivatedTenant.company}
-              </Typography>
+            <>
+              <Typography variant="subtitle1" fontWeight="bold">General Information:</Typography>
+              <Typography>Name: {selectedDeactivatedTenant.name}</Typography>
+              <Typography>Type: {selectedDeactivatedTenant.type}</Typography>
+              <Typography>Deactivated On: {formatDateForDisplay(selectedDeactivatedTenant.deactivatedAt)}</Typography>
+              <Typography>Reason for Deactivation: {selectedDeactivatedTenant.reasonForDeactivation}</Typography>
+              <Typography>Deactivated by: {selectedDeactivatedTenant.deactivatedBy}</Typography>
+              <Typography>Status: <Chip label={getStatusProps(selectedDeactivatedTenant.status).label} sx={{...getStatusProps(selectedDeactivatedTenant.status).style}} size="small" /></Typography>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" fontWeight="bold">Contact Information:</Typography>
+              <Typography>Email: {selectedDeactivatedTenant.email}</Typography>
+              <Typography>Phone: {selectedDeactivatedTenant.phone}</Typography>
+              <Typography>Company: {selectedDeactivatedTenant.company}</Typography>
+              {selectedDeactivatedTenant.type === "Dedicated Desk Tenant" && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="subtitle1" fontWeight="bold">Dedicated Desk Specifics:</Typography>
+                  <Typography>Last Active Date: {selectedDeactivatedTenant.lastActiveDate}</Typography>
+                </>
+              )}
               {selectedDeactivatedTenant.type === "Private Office" && (
-                <Typography variant="body1">
-                  <strong>Office:</strong> {selectedDeactivatedTenant.office}
-                </Typography>
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="subtitle1" fontWeight="bold">Private Office Specifics:</Typography>
+                  <Typography>Office: {selectedDeactivatedTenant.office}</Typography>
+                  <Typography>Details: {selectedDeactivatedTenant.details}</Typography>
+                </>
               )}
               {selectedDeactivatedTenant.type === "Virtual Office" && (
-                <Typography variant="body1">
-                  <strong>Service:</strong> {selectedDeactivatedTenant.service}
-                </Typography>
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="subtitle1" fontWeight="bold">Virtual Office Specifics:</Typography>
+                  <Typography>Service: {selectedDeactivatedTenant.service}</Typography>
+                  <Typography>Details: {selectedDeactivatedTenant.details}</Typography>
+                </>
               )}
-              <Typography variant="body1">
-                <strong>Deactivated At:</strong>{" "}
-                {selectedDeactivatedTenant.deactivatedAt
-                  ? format(selectedDeactivatedTenant.deactivatedAt, "PPPpp")
-                  : "N/A"}
-              </Typography>
-              <Typography variant="body1">
-                <strong>Status:</strong>{" "}
-                <Chip
-                  label={statusChipProps[selectedDeactivatedTenant.status].label}
-                  sx={{
-                    ...statusChipProps[selectedDeactivatedTenant.status].style,
-                    fontSize: "0.875rem",
-                    borderRadius: "999px",
-                    px: 1.5,
-                  }}
-                  size="small"
-                />
-              </Typography>
-              {selectedDeactivatedTenant.deactivatedBy && (
-                <Typography variant="body1">
-                  <strong>Deactivated By:</strong>{" "}
-                  {selectedDeactivatedTenant.deactivatedBy}
-                </Typography>
-              )}
-            </Stack>
+            </>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseModalDeactivated}>Close</Button>
         </DialogActions>
       </Dialog>
+
     </Container>
   );
 }
