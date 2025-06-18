@@ -135,7 +135,7 @@ export default function Login({ closeModal, showSignupModal }) { // Added showSi
                 </button>
               </div>
               <div className="mt-4 text-center text-sm">
-                Haven't an account yet?{' '}
+                Don't have an account yet?{' '}
                 <button
                   type="button"
                   onClick={handleSignupClick}

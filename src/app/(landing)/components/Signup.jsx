@@ -112,8 +112,8 @@ export default function Signup({ closeModal, showLoginModal }) { // Added showLo
   };
 
   return (
-    <div className="fixed inset-0 flex justify-center items-center z-50 bg-gray-500/70 bg-opacity-50 px-4">
-      <div className="bg-white/70 p-8 rounded-lg shadow-md w-full max-w-md overflow-y-auto" style={{ maxHeight: '90vh' }}>
+    <div className="fixed inset-0 flex justify-center items-center z-50 bg-transparent bg-opacity-50 px-4">
+      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md overflow-y-auto" style={{ maxHeight: '90vh' }}>
         <h2 className="text-2xl font-bold mb-6 text-center">Sign Up</h2>
 
         {showSuccessModal ? (
